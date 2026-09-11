@@ -1,0 +1,535 @@
+/* css/styles.css
+   Design goals:
+   - High contrast black-on-white; avoid yellow / pale colours that wash out
+     when printed in black & white or laminated back-to-back.
+   - Works responsively down to iPhone 13 landscape (844 x 390 CSS px).
+   - Two dedicated print tables (7 days each) sized for A4 landscape.
+*/
+
+:root {
+  --ink: #111111;
+  --line: #333333;
+  --line-light: #888888;
+  --bg: #ffffff;
+  --bg-alt: #f2f2f2;
+  --accent: #0b4f8a; /* dark blue - reads fine in greyscale */
+  --warn: #8a1c1c; /* dark red - reads fine in greyscale */
+  font-size: 16px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.no-print { }
+.print-only { display: none; }
+
+/* ---------- header / footer ---------- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  border-bottom: 2px solid var(--ink);
+}
+.app-header h1 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+.icon-btn {
+  font-size: 1.3rem;
+  background: none;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+}
+.app-footer {
+  padding: 0.6rem 1rem;
+  font-size: 0.75rem;
+  color: var(--line);
+  border-top: 1px solid var(--line-light);
+}
+.app-footer a { color: var(--accent); }
+
+/* ---------- settings panel ---------- */
+
+.settings-panel {
+  padding: 0.75rem 1rem;
+  border-bottom: 2px solid var(--ink);
+  background: var(--bg-alt);
+}
+.field { display: flex; flex-direction: column; margin-bottom: 0.6rem; }
+.field label { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.2rem; }
+.field .hint { font-weight: 400; color: var(--line); }
+.field input, .field select {
+  padding: 0.4rem;
+  font-size: 1rem;
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+}
+.field-row { display: flex; gap: 0.75rem; }
+.field-row .field { flex: 1; }
+.actions { align-items: center; }
+.primary-btn, .secondary-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.95rem;
+  border-radius: 6px;
+  border: 1px solid var(--ink);
+  cursor: pointer;
+}
+.primary-btn { background: var(--ink); color: #fff; }
+.secondary-btn { background: #fff; color: var(--ink); }
+.status-msg { font-size: 0.85rem; margin-top: 0.4rem; }
+.status-msg.error { color: var(--warn); font-weight: 600; }
+.tide-source-note { font-size: 0.8rem; margin: 0.2rem 0 0.4rem; color: var(--line); }
+.data-warning {
+  margin: 0.6rem 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--warn);
+  border-radius: 6px;
+  color: var(--warn);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* small fixed badge, bottom-right, shown only when displaying data that
+   came from an offline/localStorage cache instead of a fresh network call */
+.stale-badge {
+  position: fixed;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 20;
+  background: #fff;
+  border: 2px solid var(--ink);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  max-width: 60vw;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+/* ---------- interactive table (screen) ---------- */
+
+.loading-msg { padding: 1rem; }
+
+.table-scroll {
+  overflow: auto;
+  max-height: calc(100vh - 120px);
+  border-top: 1px solid var(--line-light);
+}
+
+table.planner-table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+}
+.planner-table th, .planner-table td {
+  border: 1px solid var(--line-light);
+  padding: 0.4rem 0.5rem;
+  text-align: center;
+  font-size: 0.85rem;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.planner-table:not(.print-table) th:not(.row-label-col),
+.planner-table:not(.print-table) td:not(.row-label-col) {
+  min-width: 12.5rem;
+}
+.planner-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 3;
+  border-bottom: 2px solid var(--ink);
+}
+.planner-table .row-label-col {
+  position: sticky;
+  left: 0;
+  background: var(--bg);
+  z-index: 2;
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+  border-right: 2px solid var(--ink);
+}
+.planner-table thead th.row-label-col { z-index: 4; }
+.row-label-sub {
+  font-weight: 400;
+  font-size: 0.8em;
+  color: var(--muted, #555);
+  white-space: nowrap;
+}
+.row-label-icon { width: 1.15em; height: 0.66em; vertical-align: -0.05em; overflow: visible; }
+.fish-body { fill: #1f6fb2; stroke: none; }
+.fish-tail { fill: #1f6fb2; stroke: none; }
+.fish-eye { fill: #fff; stroke: none; }
+
+.planner-table .dow { font-weight: 700; }
+.planner-table .daymonth { font-weight: 400; color: var(--line); }
+.stars { letter-spacing: 1px; }
+.muted { color: var(--line); font-size: 0.8em; }
+.warn { color: var(--warn); font-weight: 600; }
+.moon-icon { font-size: 1.05em; }
+
+/* Screen-only colour-coding for notably strong/adverse values (wind speed,
+   rain chance, hot/cold temps, extreme tide highs/lows) so they can be
+   spotted at a glance. Always overridden back to plain black in print
+   (see @media print section) to keep the laminated sheet B&W-safe. */
+.value-high { color: #b3261e; font-weight: 700; }
+.value-med { color: #b05a00; font-weight: 600; }
+.value-cold { color: #0b4f8a; font-weight: 700; }
+
+.tide-entry { display: flex; align-items: baseline; gap: 0.4rem; }
+.tide-entry--left { justify-content: flex-start; padding-left: 8%; }
+.tide-entry--right { justify-content: flex-end; padding-right: 8%; }
+.tide-entry-height { white-space: nowrap; }
+
+/* tide curve mini chart */
+.tide-curve-cell { padding: 0.1rem 0 !important; }
+.tide-curve-wrap { position: relative; width: 100%; height: 180px; display: flex; flex-direction: column; }
+.tide-axis { position: relative; width: 100%; height: 11px; flex: 0 0 11px; }
+.tide-axis-tick {
+  position: absolute; bottom: 0; width: 1px; height: 3px;
+  background: var(--line); transform: translateX(-50%);
+}
+.tide-axis-label {
+  position: absolute; top: 0; font-size: 6.5px; color: var(--muted, #555);
+  transform: translateX(-50%); white-space: nowrap;
+}
+.tide-curve-svg { width: 100%; flex: 1 1 auto; display: block; overflow: visible; }
+.tide-curve-plot { position: relative; width: 100%; flex: 1 1 auto; }
+.tide-curve-plot .tide-curve-svg { position: absolute; top: 0; left: 0; height: 100%; }
+.tide-curve-line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.tide-curve-fill { opacity: 0.35; stroke: none; }
+/* H/L markers are plain HTML positioned by percentage over the SVG area
+   (not inside the SVG) so they keep normal, undistorted pixel shapes even
+   though the SVG itself uses preserveAspectRatio="none" and gets stretched
+   non-uniformly to fill columns of varying width. Positioned relative to
+   .tide-curve-svg (not the whole wrap) so the axis row above doesn't shift
+   their vertical percentage offsets. */
+.tide-marker-dot {
+  position: absolute; width: 4px; height: 4px; margin: -2px 0 0 -2px;
+  border-radius: 50%; background: var(--ink); pointer-events: none;
+}
+.tide-marker-dot--high { background: #0b4f8a; } /* deeper blue for high tide peaks */
+.tide-marker-dot--low { background: #6fb1e0; } /* lighter blue for low tide troughs */
+.tide-marker-label {
+  position: absolute; font-size: 7.5px; color: var(--ink); font-weight: 700;
+  white-space: nowrap; pointer-events: none;
+}
+.tide-marker-label--high { color: #0b4f8a; }
+.tide-marker-label--low { color: #4a90c4; }
+.tide-night { fill: var(--ink); opacity: 0.06; }
+
+/* Reference tide height overlay: a dotted horizontal line at a
+   user-chosen "critical depth" (entered via the input in the Tide curve
+   row label), plus a dot + time label at every point each day's curve
+   crosses that height - drawn on BOTH screen and print (unlike the
+   mouse-hover readout below), since it's an explicit planning aid the
+   user wants visible on the laminated printout too. */
+.tide-ref-input-wrap { display: inline-flex; align-items: center; margin-left: 0.35rem; }
+.tide-ref-input {
+  width: 3.4rem; font: inherit; font-size: 0.75rem; padding: 0.05rem 0.3rem;
+  border: 1px solid var(--line); border-radius: 0.25rem; background: #fff; color: var(--ink);
+}
+/* Printable readout of the same value shown in `#refHeightInput` above -
+   the input itself is `.no-print` (a live number input can't render on
+   paper), so this plain-text label is what actually appears on the
+   laminated sheet. Forced onto its own line under the "Tide curve" title
+   (rather than inline like the input) via `display: block`, so it reads
+   as a caption rather than crowding the row title. */
+.tide-ref-print-label { display: block; font-weight: 700; font-size: 0.7rem; margin-top: 0.15rem; }
+.tide-ref-line {
+  position: absolute; left: 0; right: 0; height: 0; border-top: 1.5px dotted #c0392b;
+  pointer-events: none; z-index: 1;
+}
+.tide-ref-dot {
+  position: absolute; width: 4.5px; height: 4.5px; margin: -2.25px 0 0 -2.25px;
+  border-radius: 50%; background: #c0392b; pointer-events: none; z-index: 2;
+}
+.tide-ref-time {
+  position: absolute; font-size: 9.5px; font-weight: 700; color: #c0392b;
+  white-space: nowrap; pointer-events: none; z-index: 2;
+}
+/* Falling crossings (heading toward the next low): label sits above the
+   line, reading bottom-to-top (rotated -90deg, "head tilted left"),
+   centred on the dot horizontally with clear vertical space above it.
+   The transform order matters here and is easy to get wrong: centre the
+   label on the dot first (`translate(-50%,-50%)`, around `transform-origin:
+   center`), THEN rotate, THEN push it away from the dot along the *now
+   rotated* axis with `translateX()` (translateX moves along the box's own
+   rotated axis, which after a -90deg rotation points straight up on
+   screen). Doing the offset as part of the original (pre-rotate)
+   `translate()` - as an earlier version did - moves the box along the
+   UNROTATED axis before the rotation is applied, which after rotating
+   also drags the label sideways off-center from the dot (visually
+   "mis-aligned left/right") - this was a real bug, found by comparing
+   measured dot-center-x vs label-center-x. The em-based offset is
+   relative to the label's own font-size, so clearance from the curve
+   stays proportionally correct if the font size ever changes (print vs.
+   screen, future tweaks); 3.5em was measured (via rendered bounding-box
+   checks) to be enough to clear the curve/dot on screen while keeping
+   the label close enough to visually read as "belonging to" that dot.
+   Print needs a slightly larger offset (see the print override further
+   down) purely because the print curve is drawn with a taller SVG
+   viewBox relative to its own row, which changes where the dot itself
+   sits within the row - it is NOT simply "screen value, scaled". Always
+   re-measure both independently (bounding-box checks against the
+   `.tide-curve-wrap`'s own rect) rather than assuming one can be derived
+   from the other. */
+.tide-ref-time--above { transform: translate(-50%, -50%) rotate(-90deg) translateX(3.5em); transform-origin: center; }
+/* Rising crossings (heading toward the next high): label sits below the
+   line instead, same centring/rotation approach, pushed away along the
+   rotated axis in the opposite direction (negative translateX ends up
+   pointing straight down on screen after the -90deg rotation) - keeps
+   clear of the H label above peaks and the L label below troughs
+   regardless of which side of a peak/trough the crossing falls on. */
+.tide-ref-time--below { transform: translate(-50%, -50%) rotate(-90deg) translateX(-3.5em); transform-origin: center; }
+
+/* Tide curve hover/touch readout (screen only): a thin vertical line +
+   dot tracking the cursor/finger position along the curve, plus a small
+   floating tooltip showing the exact time and interpolated tide height at
+   that point - similar in spirit to tide-forecast.com's own tide chart
+   hover behaviour. Hidden by default (`display:none` inline, toggled by
+   `wireTideCurveHover()`); never rendered in print. */
+.tide-hover-line {
+  position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ink);
+  opacity: 0.35; pointer-events: none; display: none;
+}
+.tide-hover-dot {
+  position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+  border-radius: 50%; background: var(--accent); border: 1px solid #fff;
+  box-shadow: 0 0 0 1px var(--accent); pointer-events: none; display: none;
+}
+.tide-hover-tooltip {
+  position: absolute; transform: translate(4px, -130%); white-space: nowrap;
+  background: var(--ink); color: #fff; font-size: 0.68rem; font-weight: 600;
+  padding: 0.15rem 0.4rem; border-radius: 0.3rem; pointer-events: none;
+  display: none; z-index: 2;
+}
+.tide-hover-tooltip--flip { transform: translate(calc(-100% - 4px), -130%); }
+.tide-curve-plot[data-tide-hover] { cursor: crosshair; }
+
+/* wave / swell mini bar+arrow icon */
+.wave-icon-cell { padding: 0.1rem 0.2rem !important; }
+.wave-icon-svg { width: 100%; height: 46px; display: block; }
+.wave-bar { fill: var(--accent); opacity: 0.18; stroke: none; }
+.wave-arrow { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.wave-label { font-size: 8px; fill: var(--ink); font-weight: 600; }
+.wave-tag { font-size: 6.5px; fill: var(--ink); font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+.wave-squiggle { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; opacity: 0.85; vector-effect: non-scaling-stroke; }
+.wave-lines { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; vector-effect: non-scaling-stroke; }
+
+/* Weather cell cloud-cover + precipitation-type icons: small, simplified
+   flat icons (sun/cloud/fog and raindrop/snowflake/bolt), inline before the
+   temperature/description text. Kept mid-grey (cloud/fog) or accent-blue
+   (raindrops) on screen but forced to solid black outlines/fills in print
+   (see @media print below) so they stay crisp on a B&W laminated sheet. */
+.wx-icon-row { display: inline-flex; gap: 0.15rem; vertical-align: middle; margin-right: 0.15rem; }
+.wx-icon-svg { width: 20px; height: 20px; display: block; overflow: visible; }
+.wx-precip-svg { width: 18px; height: 16px; align-self: center; }
+.wx-sun { fill: #f2a900; stroke: none; }
+.wx-sun-ray { stroke: #f2a900; stroke-width: 1.4; stroke-linecap: round; }
+.wx-cloud { fill: #8fa8c2; stroke: #5b7a9c; stroke-width: 0.5; }
+.wx-precip-cloud { fill: #b9c9db; stroke: #5b7a9c; stroke-width: 0.6; }
+.wx-fog-line { stroke: #5b7a9c; stroke-width: 1.6; stroke-linecap: round; }
+.wx-drop { stroke: #1f6fb2; stroke-width: 1.6; stroke-linecap: round; }
+.wx-snow-line { stroke: #1f6fb2; stroke-width: 1.6; stroke-linecap: round; }
+.wx-bolt { fill: #e0930a; stroke: none; }
+
+/* wind direction/strength icon: compass rose + tapered wind barb */
+.wind-icon-svg { width: 40px; height: 40px; display: block; margin: 0 auto 0.15rem; vertical-align: middle; overflow: visible; }
+.wind-ring { fill: #fff; stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.wind-tick-label { font-size: 6.5px; fill: var(--line); font-weight: 700; }
+.wind-barb { fill: var(--ink); stroke: none; }
+.wind-circle { fill: #fff; stroke: #fff; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.wind-speed-label { font-size: 9.5px; fill: var(--ink); font-weight: 700; }
+.wind-cell { text-align: center; }
+.wind-cell-row { display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
+.wind-stats { display: flex; flex-direction: column; gap: 0.05rem; align-items: flex-start; }
+.wind-stat { display: flex; align-items: baseline; gap: 0.25rem; font-size: 0.72rem; }
+.wind-stat-label { color: var(--muted, #555); min-width: 1.8em; }
+.wind-stat-val { font-weight: 700; padding: 0 0.25rem; border-radius: 0.4rem; }
+.wind-speed-pill {
+  display: inline-block; padding: 0.05rem 0.4rem; border-radius: 0.7rem;
+  font-weight: 700; font-size: 0.78rem;
+}
+.temp-pill {
+  display: inline-block; padding: 0.05rem 0.4rem; border-radius: 0.7rem;
+  font-weight: 700;
+}
+.wave-energy-pill {
+  display: inline-block; padding: 0.05rem 0.45rem; border-radius: 0.7rem;
+  font-weight: 700;
+}
+
+/* Wind (2h)/(4h) timeline row: horizontal strip of mini barb icons,
+   positioned by percentage-of-day (left: X%) rather than flex-wrap, so
+   each cell's hour tick lines up with the same time-of-day grid as the
+   Tide curve's .tide-axis above it - in particular "00:00" sits exactly on
+   the left edge (the midnight boundary between two day columns) instead
+   of being centred within an arbitrary flex slot. */
+.wind-timeline-cell-wrap { padding: 0.2rem 0 !important; }
+.wind-timeline { position: relative; width: 100%; height: 2.9rem; }
+.wind-timeline-bg {
+  position: absolute; top: 0; bottom: 0; pointer-events: none; opacity: 0.8;
+}
+.wind-timeline-cell {
+  position: absolute; top: 0; display: flex; flex-direction: column;
+  align-items: center; width: 2.05rem; transform: translateX(-50%);
+  z-index: 1;
+}
+.wind-timeline-hour { font-size: 6.5px; color: var(--line); line-height: 1.1; }
+.wind-timeline-speed {
+  font-size: 0.62rem; font-weight: 700; line-height: 1.1;
+}
+.wind-barb-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; }
+.wind-barb-mini { fill: var(--ink); stroke: none; }
+.wind-barb-mini-outline { stroke: #fff; stroke-width: 0.8; paint-order: stroke fill; }
+
+
+
+/* ---------- responsive: tablet / mobile ---------- */
+
+@media (max-width: 900px) {
+  .planner-table th:not(.row-label-col),
+  .planner-table td:not(.row-label-col) {
+    min-width: 40vw;
+    white-space: normal;
+  }
+  .planner-table .row-label-col { min-width: 6.5rem; }
+  .table-scroll { max-height: calc(100vh - 60px); }
+}
+
+/* iPhone-13-style landscape: short viewport, wide-ish; show ~2-3 day columns */
+@media (max-width: 950px) and (max-height: 500px) and (orientation: landscape) {
+  .planner-table th:not(.row-label-col),
+  .planner-table td:not(.row-label-col) {
+    min-width: 27vw;
+  }
+  .planner-table .row-label-col { min-width: 5.5rem; font-size: 0.75rem; }
+  .planner-table th, .planner-table td { font-size: 0.75rem; padding: 0.3rem; }
+}
+
+/* ---------- print ---------- */
+
+@media print {
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+
+  @page { size: A4 landscape; margin: 5mm; }
+
+  body { background: #fff; color: #000; }
+
+  .print-page { page-break-after: always; }
+  .print-page:last-child { page-break-after: auto; }
+
+  .print-heading {
+    font-size: 12pt;
+    margin: 0 0 3mm 0;
+    border-bottom: 1.5pt solid #000;
+    padding-bottom: 1mm;
+  }
+
+  table.print-table {
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: fixed;
+  }
+  .print-table th, .print-table td {
+    border: 1pt solid #000;
+    padding: 1mm 1.6mm;
+    font-size: 9.3pt;
+    line-height: 1.15;
+    color: #000;
+    text-align: center;
+    vertical-align: top;
+    white-space: normal;
+    word-break: break-word;
+  }
+  .print-table thead th { border-bottom: 2pt solid #000; font-size: 10.5pt; padding: 0.8mm 1.6mm; }
+  .print-table .row-label-col {
+    text-align: left;
+    font-weight: 700;
+    width: 26mm;
+    border-right: 2pt solid #000;
+  }
+  .print-table .fish-body, .print-table .fish-tail { fill: #000; }
+  .print-table .fish-eye { fill: #fff; }
+  .print-table .muted { color: #222; }
+  .print-table .warn { color: #000; font-style: italic; }
+  .print-table .value-high, .print-table .value-med, .print-table .value-cold {
+    color: #000; font-weight: 700;
+  }
+  .print-table .wind-speed-pill,
+  .print-table .wind-timeline-speed,
+  .print-table .temp-pill,
+  .print-table .wave-energy-pill,
+  .print-table .wind-stat-val {
+    background: none !important; color: #000 !important; padding: 0 !important;
+  }
+  .print-table .wind-stat-label { color: #000 !important; }
+  .print-table .tide-curve-cell { padding: 0.8mm 0; }
+  .print-table .tide-curve-wrap { height: 40mm; }
+  .print-table .tide-axis-tick { background: #000; }
+  .print-table .tide-axis-label { color: #000; }
+  .print-table .tide-curve-line { stroke: #000; stroke-width: 1.6; }
+  .print-table .tide-curve-fill { fill: #000; opacity: 0.15; }
+  .print-table .tide-marker-dot,
+  .print-table .tide-marker-dot--high,
+  .print-table .tide-marker-dot--low { background: #000; }
+  .print-table .tide-marker-label,
+  .print-table .tide-marker-label--high,
+  .print-table .tide-marker-label--low { color: #000; }
+  .print-table .tide-hover-line, .print-table .tide-hover-dot, .print-table .tide-hover-tooltip { display: none !important; }
+  .print-table .tide-ref-line { border-top-color: #000; }
+  .print-table .tide-ref-dot { background: #000; }
+  .print-table .tide-ref-time { color: #000; }
+  /* Print-specific offset override - see the long comment on
+     `.tide-ref-time--above`/`--below` above for why this can't just
+     reuse the screen value; 3.8em was measured directly against the
+     print-rendered PDF (via `page.emulateMediaType('print')` + bounding
+     box checks) to keep the label within its own `.tide-curve-wrap` row
+     while still clearing the dot/curve. */
+  .print-table .tide-ref-time--above { transform: translate(-50%, -50%) rotate(-90deg) translateX(3.8em); }
+  .print-table .tide-ref-time--below { transform: translate(-50%, -50%) rotate(-90deg) translateX(-3.8em); }
+  .print-table .tide-night { fill: #000; opacity: 0.08; }
+  .print-table .wave-icon-cell { padding: 0.8mm 1mm; }
+  .print-table .wave-icon-svg { height: 11mm; }
+  .print-table .wave-bar { fill: #000; opacity: 0.15; }
+  .print-table .wave-arrow { stroke: #000; }
+  .print-table .wave-label { fill: #000; }
+  .print-table .wave-tag { fill: #000; }
+  .print-table .wave-squiggle { stroke: #000; }
+  .print-table .wave-lines { stroke: #000; }
+  .print-table .wx-sun { fill: #000; }
+  .print-table .wx-sun-ray { stroke: #000; }
+  .print-table .wx-cloud { fill: #999; stroke: #000; stroke-width: 0.6; }
+  .print-table .wx-precip-cloud { fill: #ccc; stroke: #000; stroke-width: 0.6; }
+  .print-table .wx-fog-line { stroke: #000; }
+  .print-table .wx-drop { stroke: #000; }
+  .print-table .wx-snow-line { stroke: #000; }
+  .print-table .wx-bolt { fill: #000; }
+  .print-table .wind-icon-svg { width: 9mm; height: 9mm; }
+  .print-table .wind-ring { stroke: #555; fill: #fff; }
+  .print-table .wind-tick-label { fill: #555; }
+  .print-table .wind-barb { fill: #000; }
+  .print-table .wind-circle { stroke: #fff; fill: #fff; }
+  .print-table .wind-speed-label { fill: #000; }
+  .print-table .wind-timeline-cell-wrap { padding: 0.5mm 0 !important; }
+  .print-table .wind-timeline { height: 8mm; }
+  .print-table .wind-timeline-cell { width: 5.2mm; }
+  .print-table .wind-timeline-hour { font-size: 6.5px; color: #000; }
+  .print-table .wind-timeline-speed { font-size: 6pt; color: #000; }
+  .print-table .wind-barb-mini-svg { width: 4mm; height: 4mm; }
+  .print-table .wind-barb-mini { fill: #000; }
+}

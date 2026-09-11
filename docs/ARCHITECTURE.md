@@ -1,0 +1,526 @@
+# Architecture
+
+## File layout
+
+```
+index.html                 markup: header, settings panel, main content mount point, footer
+css/styles.css              all styling: base, responsive/mobile, print
+js/locations.js             built-in location presets (name, lat, lon, timezone)
+js/astro.js                 moon position / rise / set / illumination (adapted from SunCalc)
+js/moon.js                  moon phase name/icon built on js/astro.js
+js/solunar.js                major/minor period + 0-5 star rating, built on js/astro.js + js/moon.js
+js/tides.js                 local tide CSV parser/loader (js/tides.js -> window.TideCalc)
+js/app.js                   settings form wiring, data fetching + offline cache, day-model building, rendering
+sw.js                       service worker: offline cache for the app shell + local tide CSVs
+data/tides/*.csv             bundled official tide prediction files, one per station+year
+docs/                       this documentation
+```
+
+No bundler/build step — plain `<script>` tags in dependency order (locations
+→ astro → moon → solunar → tides → app), each attaching to `window.*`
+globals (`window.Astro`, `window.MoonCalc`, `window.SolunarCalc`,
+`window.TideCalc`, `window.LOCATION_PRESETS`). `sw.js` is registered
+separately (not a `<script>` tag) via `navigator.serviceWorker.register()`
+in `js/app.js`'s `init()`.
+
+## Data flow
+
+1. `app.js: init()` reads saved settings from `localStorage` (or the first
+   preset) into the settings form, then calls `refresh()`.
+2. `refresh()` reads the form → `buildPlan(settings)`:
+   - Fetches Open-Meteo **weather** (`daily=` + `hourly=windspeed_10m,
+     winddirection_10m`) and **marine** (`daily=` +
+     `hourly=sea_surface_temperature`) for the exact `start_date`…`end_date`
+     (14-day) window, in parallel with WorldTides **extremes** (tide
+     highs/lows) if an API key is present. The hourly wind fields ride along
+     in the *same* weather request/cache entry as the daily summary fields
+     (no extra network call), and `hourlyWindForDay()` slices out every
+     2-hour timestamp (00:00, 02:00, ... 22:00) for a given calendar day
+     from that response.
+   - For each of the 14 days, looks up that day's slice of each response,
+     computes `SolunarCalc.getSolunarInfo()` and `MoonCalc.getMoonInfo()`,
+     and assembles one plain-object "day" (see `docs/OVERVIEW.md` for the
+     field list) - including `windHourly`, the array of 2-hourly
+     `{hour, dir, speed}` samples for that day.
+   - **Graceful degradation**: the weather and marine `cachedFetch()` calls
+     are each wrapped in their own `.catch()` so a failure in one (most
+     commonly Open-Meteo rejecting a `start_date`/`end_date` outside its
+     supported rolling window - roughly the last ~3 months to ~16 days
+     ahead of "today") falls back to an empty-but-well-shaped dataset
+     (`EMPTY_WEATHER`/`EMPTY_MARINE`) instead of throwing and aborting the
+     whole page. Tide highs/lows, the tide curve, moon phase and solunar
+     rating are computed independently of Open-Meteo (local CSV / WorldTides
+     + local astronomical calculation) and are unaffected either way.
+     `buildPlan()` returns a `weatherNotes` array describing which
+     Open-Meteo call(s) failed and why; `render()` shows this alongside the
+     existing tide-source warning in the `#dataWarning` banner, explicitly
+     noting this is a date-range limitation and not something a WorldTides
+     API key can fix (that key only ever affects tide highs/lows).
+3. `render(days, settings)` builds:
+   - one **interactive** `<table>` (all 14 days, screen-only, scrollable)
+   - two **print-only** `<table>`s (days 1–7 and 8–14) inside `.print-page`
+     sections, each with its own heading naming the date range.
+   Both are generated from the same `ROW_DEFS` array (row label + a
+   `render(day, curveScale)` function per data group), so the two views
+   can't drift out of sync. `curveScale` (a shared `{min, max}` height range
+   for the whole 14-day window) is threaded through so the "Tide curve" row
+   draws all days on one comparable vertical scale.
+
+## Responsive / print CSS strategy
+
+- **Screen (all sizes)**: a single scrollable container
+  (`.table-scroll { overflow: auto }`) holds one `<table>`. The header `<tr>`
+  cells (`thead th`) use `position: sticky; top: 0`, and the row-label
+  column (`.row-label-col`) uses `position: sticky; left: 0`. Because both
+  are sticky *within the same scroll container*, scrolling right always
+  keeps the visible days' dates pinned at the top, and scrolling down always
+  keeps the row labels pinned at the left — satisfying "scroll left/right for
+  days, up/down for detail, date always visible" without any JS scroll
+  syncing.
+- **Narrow / landscape phone**: a media query
+  (`max-width: 950px and max-height: 500px and orientation: landscape`,
+  tuned for iPhone-13-class viewports) shrinks the day-column `min-width` to
+  ~27vw so 2–3 day columns are visible at once, with smaller font/padding.
+- **Print**: `@media print` hides everything with `.no-print` and shows
+  `.print-only`; `@page { size: A4 landscape; margin: 4mm }` (kept near-zero
+  per project preference) plus `.print-page { page-break-after: always }`
+  (removed on the last page) puts exactly one 7-day table per sheet. Colours
+  are restricted to black borders/text (`#000`) with no fills, so the page
+  reproduces cleanly on a black & white printer or laminator. Font size/row
+  padding were tuned down (12pt→10pt, tighter padding) so all 11 rows
+  (including the tide curve) still fit on one A4 landscape sheet per week.
+- **Digital column width**: on the default (non-mobile, non-print) desktop
+  layout, day columns get an explicit `min-width: 12.5rem` (see
+  `.planner-table:not(.print-table) th/td` in `css/styles.css`) so the
+  Wind (2h) timeline's 12 mini wind-barb + speed-number cells per day have
+  enough room to stay legible instead of nearly overlapping. This rule is
+  scoped to exclude `.print-table` (which uses `table-layout: fixed` with
+  its own explicit widths) and is overridden by the narrower
+  viewport-relative (`vw`) widths in the mobile/iPhone-landscape media
+  queries below, so it only affects wide desktop/tablet screens.
+- **Screen-only colour highlighting of extreme values**: to let a user spot
+  notably strong/adverse conditions at a glance (high rain chance, hot/cold
+  temps, unusually high/low tide extremes for the 14-day window), several
+  `ROW_DEFS.render()` functions apply small helper classifiers
+  (`rainChanceClass()`, `tempClass()`, and the `curveScale`-relative logic
+  inside `tideCell()`) that add one of `.value-high` (red), `.value-med`
+  (amber), or `.value-cold` (blue) to the relevant span. These are fixed,
+  general real-world thresholds (e.g. rain chance ≥60%) rather than being
+  relative to the current 14-day window, so the same colour always means
+  the same real-world condition across different date ranges. **Print must
+  stay black & white**: `@media print` explicitly overrides all three
+  classes back to `color: #000` (see `.print-table .value-high, .value-med,
+  .value-cold`), so the same markup renders in colour on screen but plain
+  black on the laminated print sheet.
+- **Windfinder-style wind-speed colour scale (screen only)**: the Wind
+  summary row's speed pill and the Wind (2h)/(4h) timeline row use a
+  continuous 27-band colour gradient (`WIND_SPEED_COLORS` in `js/app.js`),
+  reproduced from windfinder.com's own forecast-table stylesheet (its
+  `.ws0`..`.ws26` classes), running purple/blue (calm) → green →
+  yellow/orange → red → hot pink (extreme gale). Windfinder indexes this
+  scale by whole knots, so `windSpeedColorIndex()` converts the app's km/h
+  wind speed to knots and rounds to the nearest band before looking up the
+  colour; `windSpeedStyle()` returns the resulting inline
+  `background-color`/`color` pair for the Wind row's speed pill (white text
+  on the darkest/most saturated bands, near-black text on the lighter
+  middle bands, matching Windfinder's own text-colour pairing). In the Wind
+  (2h)/(4h) timeline row, rather than colouring just the small speed number
+  in isolation (which left distracting gaps of plain white between
+  adjacent per-increment cells), `windTimelineHtml()` instead paints one
+  continuous full-height coloured strip per increment
+  (`.wind-timeline-bg`), sized to exactly the increment's width
+  (`step / 24 * 100`%) and positioned edge-to-edge with its neighbours, so
+  the colour band changes flow into one another with **no whitespace
+  between increments** - making the speed trend across the day much easier
+  to read at a glance, similar to a continuous heat-strip. The mini wind
+  barb and speed number sit on top of these strips (`z-index: 1`); the barb
+  gets a thin white outline (`.wind-barb-mini-outline`, screen-only, via
+  `paint-order: stroke fill`) so it stays visible against the darker colour
+  bands, and the speed number's text colour flips to white
+  (`WIND_SPEED_WHITE_TEXT`) on the same bands the pill uses. This is all
+  applied via inline `style=`/conditional classes (a continuous per-knot
+  scale doesn't map cleanly to a small, fixed set of named CSS classes) and
+  only when `isPrint` is false. **Print stays unaffected**: the render
+  functions skip the background strips and outline/white-text logic
+  entirely on print (`isPrint ? "" : ...`), and `.print-table
+  .wind-speed-pill, .print-table .wind-timeline-speed` force
+  `background: none` / `color: #000` as a defensive backstop in
+  `css/styles.css`.
+- **Taller tide curve on screen**: `.tide-curve-wrap` height is `148px` on
+  screen (up from an earlier `103px`) versus `22mm` in print, so the
+  digital table can dedicate more vertical space to accentuating the visual
+  difference between tide highs and lows, while the print layout keeps a
+  compact height so all 11 rows still fit one A4 landscape sheet per week.
+  This is a pure CSS height change — `tideCurveSvg()`'s internal SVG
+  `viewBox` and padding constants are unchanged, since the SVG is rendered
+  without `preserveAspectRatio="none"` on its own height (only width
+  stretches to the column), so a taller CSS box simply lets the existing
+  curve occupy more vertical pixels without distorting its proportions.
+
+## Tide curve, wave/swell and wind iconography
+
+In the "High tide" / "Low tide" rows (`tideCell()`), each event's time is
+rendered in `<strong>` (bold) only when it falls between that day's sunrise
+and sunset (`d.sunrise`/`d.sunset`, already computed per day for the Sun
+row); night-time tide events are left at normal weight. This lets an
+angler scan a day's column and immediately see which tide changes happen
+during daylight vs after dark, complementing the tide curve's own
+`.tide-night` shaded band (see below) with the same day/night distinction
+in plain text form.
+
+Three rows use small inline SVGs instead of plain text, drawn with a shared
+visual language (dark-blue `--accent` on screen, solid black in print) so
+they read as one family of "at a glance" water/weather icons:
+
+- **Tide curve** (`tideCurveSvg(d, scale)`): a filled `<polygon>` +
+  `<polyline>` built from ~20-minute cosine-interpolated sample points
+  (`buildDayCurve()`), against one shared min/max height scale
+  (`curveScale`, computed once in `buildPlan()`) so relative tidal range is
+  visually comparable across all 14 days. The SVG has **zero internal
+  horizontal padding and the `.tide-curve-cell` has zero horizontal cell
+  padding**, so each day's curve touches both edges of its `<td>` exactly -
+  this is what makes the curve look continuous across day boundaries
+  instead of visibly "breaking" at each cell border (the cause of an
+  earlier bug: the SVG's own 3px inner padding plus the cell's `0.4rem`
+  padding left a visible gap at every column edge). The chart area is
+  double the height of the other icon rows (92px view box on screen, 20mm
+  in print) both to give the curve visual weight as the row's primary
+  fishing-planning aid and to leave enough room for H/L labels without
+  clipping. Each high/low extremum that falls within that calendar day is
+  also marked directly on the curve: a small dot at the peak/trough plus a
+  text label ("H 1.9m" / "L 0.4m") positioned above (for highs) or below
+  (for lows), using `xFor()`/`yFor()` helpers that map the extremum's real
+  timestamp/height onto the same coordinate space as the curve line (`xFor`
+  = time-of-day fraction across the day's width, `yFor` = the shared height
+  scale, with `labelPad` reserved at both the top and bottom of the
+  `viewBox` so labels aren't clipped). This is in addition to, not a
+  replacement for, the existing plain-text "High tide"/"Low tide" rows.
+  The H/L dot + label markers are rendered as an **absolutely-positioned
+  HTML overlay** (`.tide-marker-dot`/`.tide-marker-label` spans inside a
+  `.tide-curve-wrap` container) rather than as SVG `<circle>`/`<text>`
+  elements, even though their x/y coordinates are computed with the same
+  `xFor()`/`yFor()` math as the curve itself. This is because the curve's
+  `<svg viewBox="0 0 150 92" preserveAspectRatio="none">` is deliberately
+  stretched non-uniformly to fill whatever width the day column ends up at
+  (which varies - e.g. columns get wider once the "Wind (2h)" row's content
+  forces a wider layout) - anything drawn *inside* that SVG stretches along
+  with it, which distorted the dots into ellipses and the "H"/"L" glyphs
+  into squashed/stretched shapes on wide columns. Positioning the markers
+  as plain HTML `position: absolute; left/top: <percentage>` on top of the
+  SVG keeps their pixel shapes always correct regardless of column width,
+  while still tracking the curve's data-driven position exactly.
+  A faint `.tide-night` shaded band (`--ink` at ~6-8% opacity, so it stays
+  legible and print-safe in black & white) is drawn across the portion of
+  each day's width before sunrise and after sunset (using the same
+  `xFor(d.sunrise)`/`xFor(d.sunset)` mapping), so it's visible at a glance
+  which tide events happen in daylight vs after dark.
+  A `.tide-axis` strip of hour tick labels ("00", "02"/"04", ...) sits
+  directly above the curve, generated by the same `tideCurveSvg(d, scale,
+  intervalHours)` function and positioned with the same `xFor()` time-based
+  percentage mapping as the curve/markers - so a tick at, say, "12:00" lines
+  up exactly with wherever the curve's value is at noon. `intervalHours` is
+  **2 on screen and 4 in print** (`ROW_DEFS`'s `tideCurve.render` passes
+  `isPrint ? 4 : 2`, mirroring the same screen/print interval split used
+  for the Wind timeline row below it), so the two timeline-style rows'
+  tick columns line up with each other as well as with the curve.
+  **High/low colour differentiation (screen only)**, inspired by
+  tide-forecast.com's own tide chart: the filled area under the curve
+  (`.tide-curve-fill`) now uses a vertical `<linearGradient>` (one per day,
+  `id="tideGrad-<iso>"`, built inline in `tideCurveSvg()`) running from a
+  deeper blue (`#0b4f8a`) at the top of the chart down to a lighter blue
+  (`#bcdcf2`) at the bottom - so the fill itself reads like a simple depth
+  gauge: **more "water" (deeper blue) near high-tide peaks, less "water"
+  (lighter blue) near low-tide troughs**, at a glance, without needing to
+  read the H/L labels. The gradient is applied via the SVG `fill="url(#...)"`
+  presentation attribute (rather than a CSS `fill:` declared through the
+  `.tide-curve-fill` class) specifically so print can still force solid
+  black: a real CSS rule (`.print-table .tide-curve-fill { fill: #000 }`)
+  always wins the cascade over a presentation attribute, so print output is
+  unaffected regardless of the gradient reference. The H/L overlay markers
+  also get a matching `--high`/`--low` modifier class
+  (`.tide-marker-dot--high`/`.tide-marker-label--high` in the same deeper
+  `#0b4f8a`, `.tide-marker-dot--low`/`.tide-marker-label--low` in a lighter
+  `#6fb1e0`/`#4a90c4`) instead of one flat `--ink` colour for both, so the
+  dot/text labels reinforce the same high/low colour language as the fill.
+  **Print stays plain black** throughout: `.print-table
+  .tide-marker-dot--high`/`--low` and the label equivalents are explicitly
+  overridden back to `#000` in `css/styles.css`, same pattern as all the
+  other screen-colour features.
+  **Interactive hover/touch readout (screen only)**, also inspired by
+  tide-forecast.com's tide chart: `wireTideCurveHover()` (called once from
+  `render()` against the whole screen table, not per-cell, since
+  `buildTable()` rebuilds the table on every refresh) adds delegated
+  `mousemove`/`touchstart`/`touchmove` listeners that, for whichever
+  `.tide-curve-plot[data-tide-hover]` the cursor/finger is over, linearly
+  interpolate between the two nearest of that day's already-computed
+  ~20-minute sample points (serialized into a `data-points` JSON attribute
+  by `tideCurveSvg()`, alongside `data-daystart`/`data-tz`/`data-scale-min`/
+  `data-scale-max` needed to convert the interpolated height back into a
+  y-position) to show a `.tide-hover-line` (vertical guide), `.tide-hover-dot`
+  (marker at the exact curve point), and a `.tide-hover-tooltip` (small
+  floating "9:32 am · 1.40m" label, flipping to the left of the cursor via
+  `.tide-hover-tooltip--flip` once past 70% of the column's width so it
+  doesn't run off the right edge). These elements are only rendered at all
+  when `isPrint` is false (`tideCurveSvg()`'s `data-tide-hover` attribute
+  and the three hover `<div>`s are omitted entirely in print output), with
+  a defensive `.print-table .tide-hover-*  { display: none !important; }`
+  backstop in CSS as well.
+- **Waves / Swell** (`waveIconSvg(d, waveScale)`): two bars (wave height
+  wider/lighter, swell height narrower/darker) against one shared 0..max
+  scale (`waveScale`, also computed once in `buildPlan()`). Each bar is
+  labelled with a small uppercase tag ("WAVE" / "SWELL") positioned just
+  above its own height value, inside/adjacent to that bar (rather than as a
+  separate header row), so the label stays visually tied to the bar it
+  describes even as bar heights change day to day. Each bar also carries a
+  small line-drawing glyph, sized/scaled with the bar's own height, that
+  visually distinguishes the two water-motion types per the classic
+  wave-vs-swell reference diagram: the **wave** glyph (`.wave-lines`, dark
+  `--ink`) is a steep, asymmetric Bezier line with a hooked/overturning
+  crest to evoke choppy, locally wind-driven seas; the **swell** glyph
+  (`.wave-squiggle`, `--accent`) is a smooth, symmetrical sine-like curve to
+  evoke a long-wavelength harmonic swell from a distant system - the same
+  visual distinction used in oceanography reference diagrams for
+  "wind wave" vs "swell". An arrow showing the swell's *travel* direction
+  (compass "from" + 180°) is placed between the two bars, with the period
+  as text underneath - deliberately similar shape language to the tide
+  curve.
+- **Weather cloud-cover + precipitation icons** (`weatherIconsHtml()` /
+  `cloudCoverIconSvg()` / `precipIconSvg()`): small flat icons shown inline
+  before the temperature/description text in the Weather row, borrowing the
+  general iconography style used by windfinder.com's own forecast tables -
+  a simple sun/cloud/fog glyph for cloud cover plus a separate small
+  raindrop/snowflake/lightning-bolt glyph for precipitation type - though
+  these are original, simplified shapes drawn from scratch (not copies of
+  Windfinder's actual artwork/SVGs). `weatherCloudCategory(code)` and
+  `weatherPrecipCategory(code)` bucket the Open-Meteo WMO weather code
+  (`d.weatherCode`) into one of five cloud categories (`clear`/`few`/
+  `scattered`/`overcast`/`fog`) and, independently, one of five
+  precipitation categories (`drizzle`/`rain`/`heavyrain`/`snow`/`storm`, or
+  `null` for no precipitation) - the two are shown side by side so, e.g., a
+  drizzly overcast day shows both a cloud glyph *and* a raindrop glyph
+  rather than needing one icon per WMO code combination. On screen the sun
+  is amber, clouds/fog mid-grey, raindrops/snow the same blue `--accent` as
+  the tide curve, and the lightning bolt dark red; **print stays fully
+  black & white** via `.print-table .wx-*` overrides forcing solid black
+  fills/strokes (with a light grey clouds fill only, kept as the single
+  exception since a fully solid black cloud silhouette reads worse than a
+  light-grey-with-black-outline one when printed/laminated).
+- **Wind** (`windIconSvg(windDir, windSpeed)`): a compass rose with a
+  tapered wind barb, following the standard meteorological convention of
+  showing both where the wind is coming *from* and where it's blowing *to*
+  in one glyph. A fixed ring (`.wind-ring`) with unrotated N/E/S/W tick
+  labels (`.wind-tick-label`) gives an absolute frame of reference. A single
+  wide-to-narrow triangle (`.wind-barb`) spans the full compass diameter -
+  its thick, flat base sits at the ring edge on the compass bearing the wind
+  is blowing *from* (`windDir`, unmodified - no +180 needed since the shape
+  itself, not an arrowhead, encodes direction), tapering to a sharp point at
+  the diametrically opposite edge, i.e. where it's blowing *to*. The whole
+  barb is rotated with `rotate(fromDeg)` (SVG's clockwise rotation matches
+  compass bearings directly, so `fromDeg` can be used as-is). A speed circle
+  (`.wind-circle` + `.wind-speed-label`) is drawn on top at the centre,
+  neatly covering the barb's midsection so only the tail and tip peek out
+  past it - keeping the numeric speed as the precise readout while the barb
+  shape gives an instant at-a-glance sense of direction. Barb tail
+  width scales gently with speed (capped at 60 km/h) so a stronger blow
+  looks visibly heavier at its source.
+- **Wind timeline** (`windTimelineHtml(d, intervalHours)` / `miniWindBarbSvg()`):
+  a separate row directly below "Wind" showing how direction and strength
+  shift *through* the day, in the spirit of Windfinder/Windy's hourly wind
+  tables. `hourlyWindForDay()` always stores 2-hourly samples in
+  `d.windHourly` (this is the finest resolution requested from Open-Meteo);
+  `windTimelineHtml()` then further thins that down at render time via its
+  `intervalHours` argument, so the same cached data drives two different
+  densities: **2h on screen** (label "Wind (2h)", 12 samples/day) and
+  **4h in print** (label "Wind (4h)", 6 samples/day) - `buildTable()` passes
+  `isPrint` through to `render()` for exactly this purpose, and each row's
+  optional `labelSub: { screen, print }` renders the matching "(2h)"/"(4h)"
+  suffix next to the row label. The coarser 4h print interval keeps the row
+  to a single line per day even in the narrower 7-day-per-page print
+  columns; the finer 2h screen interval gives more temporal detail where
+  horizontal space isn't as constrained. Cells are positioned absolutely
+  by `left: (hour / 24 * 100)%` (not flex-wrapped) so each cell's hour tick
+  lands on the same time-of-day grid as the Tide curve's `.tide-axis` -
+  "00:00" sits exactly on the left edge of the column (the midnight
+  boundary with the previous day), matching how the tide axis's "00" tick
+  aligns. Each cell is a `[hour label / mini barb icon / speed number]`
+  stack. The mini barb (`miniWindBarbSvg()`) reuses the same
+  tapered-triangle shape and "thick tail = FROM, point = TO" convention as
+  the main compass-rose wind icon, but without the ring/ticks/speed-circle
+  chrome (dropped entirely per user feedback - the ring added visual noise
+  without extra information at this small size), so it stays legible at a
+  much smaller size (each mini icon is scaled against that *day's own*
+  max sampled speed at the interval being rendered, not the whole 14-day
+  window, since the goal here is relative change through one day rather
+  than cross-day comparison).
+
+All three icon systems share `overflow: visible` on their SVG elements
+(`.tide-curve-svg`, `.wind-icon-svg`) since labels/markers/arrows are
+intentionally drawn at or slightly outside the nominal `viewBox` bounds;
+without it Chrome clips strictly to the `viewBox` rectangle. Note also that
+`.wind-cell` (a `<td>`) must use `text-align: center` rather than
+`display: flex` - flex on a table cell breaks the HTML table's column
+layout entirely (discovered when an earlier version of the wind icon CSS
+used flex and every day after the first went blank/misaligned).
+
+### Wave energy row
+
+Modelled on surf-forecast.com's own published methodology (see their public
+FAQ at surf-forecast.com/pages/faq): wave energy is a function of swell
+height *squared* and swell period *linearly* - i.e. taller swells matter far
+more than longer ones, but a long-period groundswell still carries
+noticeably more energy than a short-period wind swell of equal height. This
+lets two swells of the same height but different periods be told apart at a
+glance (something the raw height/period numbers alone don't communicate
+well).
+
+`waveEnergyKJ(swellHeightM, swellPeriodS)` in `js/app.js` computes
+`swellHeight^2 * swellPeriod * 10` - the underlying `H^2 * T` relationship
+matches the standard deep-water wave-power approximation used in wave
+energy resource assessment (`P[kW/m] ~= 0.5 * Hs^2 * Te`); the constant `10`
+is our own scaling choice, tuned so typical values land in the same rough
+bands surf-forecast.com describes in their FAQ (not a reproduction of their
+undisclosed exact formula/constant - this is an original, independently
+tuned approximation for the same purpose). No new data source is fetched:
+we reuse `swell_wave_height_max`/`swell_wave_period_max`, already pulled
+from the Open-Meteo Marine API for the existing Waves/Swell row.
+
+`waveEnergyBand()` buckets the kJ value into the same rough bands
+surf-forecast.com's FAQ describes (flat &lt;100, small 100-200, punchy
+200-1000, heavy 1000-3000, extreme 3000+) for both the text label shown
+under the kJ figure and the colour used on screen
+(`WAVE_ENERGY_COLORS`/`waveEnergyStyle()` - grey/blue/green/orange/red,
+following the "flat -> extreme" progression). As with every other coloured
+metric, print forces plain black text with no background
+(`.print-table .wave-energy-pill` override), keeping the laminated sheet
+readable in B&W.
+
+Adding this row required tightening the print table's base font-size/padding
+slightly (10pt/1.4mm -> 9.3pt/1mm, plus a small tide-curve-wrap height trim)
+so 12 rows (up from 11) still fit on a single A4-landscape page per
+7-day half - `buildTable()`/`ROW_DEFS` doesn't auto-fit to the page, so any
+future row addition should re-check the printed PDF page count the same
+way (see "Testing method" notes elsewhere in this doc).
+
+### Reference tide height ("planning line")
+
+For trip planning (e.g. "I need at least 1.0m of water to safely cross this
+sandbar - what time can I leave, and what time must I be back by?"), the
+Tide curve row's label cell has a small number input (`#refHeightInput`,
+`.no-print` - screen only, since print can't accept input). Entering a
+height there:
+
+- Persists the value to `localStorage` (`fishingSolunar.refTideHeight`,
+  via `setRefTideHeight()`) so it survives reloads, same pattern as the
+  other settings fields.
+- Triggers `render()` again in place (no network refetch - the underlying
+  `days` data is unchanged, only the overlay drawn on top of the existing
+  curves changes), via a module-level `lastRenderArgs` captured each time
+  `render()` runs.
+- Draws a dotted horizontal reference line at that exact height across
+  **every** day's tide curve (`tideCurveSvg()`), plus a small dot and a
+  time label (with a &uarr;/&darr; rising/falling arrow, rotated -90deg to
+  read vertically) at every point each day's curve actually crosses that
+  height - typically twice per semi-diurnal tide (once rising, once
+  falling), giving an at-a-glance "leave by / back by" window for each of
+  the 14 days side by side.
+- Can also be set by **clicking directly on any tide curve**: the click
+  handler (in `wireTideCurveHover()`, alongside the existing hover-readout
+  logic, since both need the same per-day `data-points`/`data-daystart`
+  geometry) reads the height at the clicked x-position, rounds it to 2
+  decimal places, and calls `setRefTideHeight()` + re-renders - updating
+  the input box's displayed value (and overwriting any previously-set
+  height) without needing to type into the box at all.
+
+Each crossing's time label is placed **below the curve if the nearby
+peak/trough is a High, above the curve if it's a Low** - critically, the
+*two* crossings that flank the *same* peak/trough (one rising into it, one
+falling out of it) must always land on the **same** side, so the pair
+reads as a matched "leave by / back by" set rather than being visually
+split across the line. This ruled out simpler approaches:
+- Using the crossing's own rising/falling direction (`c.rising`) directly
+  was tried first, but by definition the two crossings of a pair have
+  *opposite* rising/falling values, so that always split the pair - wrong.
+- Picking the extremum nearest **in time** was tried next (both across
+  the full multi-day event list and restricted to just the two extrema
+  bracketing that crossing's arc) - also wrong, because on an asymmetric
+  tide arc the two flanking crossings aren't necessarily equidistant in
+  time from their shared extremum, so time-distance can pick different
+  answers for what should be a matching pair.
+
+The working approach, in `nearestExtremumIsHigh(crossing)`: compare
+`refTideHeight` by **height distance** (not time distance) to
+`crossing.prevExtremum.height` and `crossing.nextExtremum.height`, and
+report whichever is closer. Both crossings flanking one peak/trough share
+the *exact same two* bracketing extrema (and thus the exact same two
+height values), so comparing the same reference height against the same
+two numbers with the same formula is guaranteed to produce the same
+answer for both - this is what makes the pair always match.
+`findHeightCrossings()` computes `prevExtremum`/`nextExtremum` for each
+crossing by scanning the day's full `tideAllEvents` list (the 14-day
+sorted High/Low list, attached to every day object in `buildPlan()`) for
+the last event at/before and first event at/after the crossing's time.
+
+`findHeightCrossings(points, targetHeight, allEvents)` walks each day's
+existing 20-minute-resolution `tideCurve` samples (the same array already
+used to draw the curve and power the mouse-hover readout - no new data
+source), linearly interpolating the exact crossing time between the two
+bracketing samples for each segment where the target height falls between
+the two sample heights, and records whether the tide was rising or falling
+at that crossing (`c.rising`, still used for the arrow glyph direction,
+just no longer for the above/below side).
+
+The above/below CSS offset (`.tide-ref-time--above`/`--below`) is set in
+`em` units (`3.2em`, relative to the label's own `font-size`) rather than
+a fixed pixel value, so the clearance from the curve line scales
+automatically if the font size ever changes (print vs. screen, future
+responsive tweaks) instead of needing separate manual re-tuning.
+
+Unlike the mouse-hover tooltip (screen-only, ephemeral), this reference
+line is drawn identically in both the screen and print SVG paths (the
+`isPrint` branch only affects whether the *input* itself renders - the
+line/dot/time overlay always renders when a height is set), so the chosen
+planning height and its crossing times are visible on the laminated
+printout too. The print stylesheet forces the line/dot/labels to solid
+black (`.print-table .tide-ref-line/.tide-ref-dot/.tide-ref-time`), same
+pattern as every other coloured overlay in this table.
+
+Note: the Tide curve row's `labelIcon` (the input wrapper) is defined as a
+**function**, not a static string, in `ROW_DEFS` - it's re-evaluated on
+every `buildTable()` call so the input's `value` attribute always reflects
+the current `refTideHeight` (a static string would bake in the value from
+the first render only, and never update after a click or programmatic
+change).
+
+
+## Offline support
+
+See `docs/DATA_SOURCES.md` "Offline behaviour" for full detail. In short:
+`sw.js` cache-first-serves the app shell (HTML/CSS/JS/local tide CSVs) so
+the whole page + tide calculations work with no network; `cachedFetch()` in
+`js/app.js` keeps the last-good weather/marine/WorldTides API responses in
+`localStorage` per location+date-range as a fallback when a live fetch
+fails; and a bottom-right `#staleBadge` (shown/hidden by `updateStaleBadge()`)
+flags when currently-displayed weather/wave data is a >6h-old cached
+fallback, clearing automatically on the next successful live refresh
+(including via a browser `online` event listener).
+
+Because the service worker is cache-first for the app shell, a normal
+browser reload can keep serving old HTML/CSS/JS (and `cachedFetch()` can
+still surface an old API response if a live fetch happens to fail at that
+moment) even after the underlying files/logic have changed. The **"Force
+refresh" button** (`#forceRefreshBtn`, `forceRefresh()` in `js/app.js`)
+exists for exactly this: it clears every cache layer - all
+`fishingSolunar.cache.*` keys in `localStorage`, every entry via the
+`caches` API (the service worker's app-shell cache), and unregisters the
+service worker itself - then does a hard `location.href` reload with a
+cache-busting query param, guaranteeing the very next load fetches
+everything fresh and re-registers the service worker from scratch.
+
+## Adding a data field
+
+To add a new row (e.g. "Water clarity"), add one entry to the `ROW_DEFS`
+array in `js/app.js` with a `label` and a `render(day)` function returning
+an HTML string — it will automatically appear in both the interactive table
+and both print tables. If the value comes from a new API field, add it to
+the relevant `fetch*()` call's query string and to the per-day object built
+in `buildPlan()`.

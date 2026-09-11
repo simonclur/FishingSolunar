@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>FishingSolunar &mdash; Tide, Swell &amp; Solunar Planner</title>
+<link rel="stylesheet" href="css/styles.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%A3%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+
+<header class="app-header no-print">
+  <h1 id="locationTitle">FishingSolunar</h1>
+  <button id="forceRefreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh (clears cached data and reloads)">&#8635;</button>
+  <button id="settingsToggle" class="icon-btn" aria-label="Settings" title="Settings">&#9881;</button>
+</header>
+
+<section id="settingsPanel" class="settings-panel no-print" hidden>
+  <form id="settingsForm">
+    <div class="field">
+      <label for="locationPreset">Preset location</label>
+      <select id="locationPreset">
+        <option value="">&mdash; custom &mdash;</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="locationName">Location name</label>
+      <input id="locationName" type="text" required placeholder="Waddy Point, K'gari (Fraser Island), Queensland, Australia" />
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="lat">Latitude</label>
+        <input id="lat" type="number" step="0.0001" required />
+      </div>
+      <div class="field">
+        <label for="lon">Longitude</label>
+        <input id="lon" type="number" step="0.0001" required />
+      </div>
+    </div>
+    <div class="field">
+      <label for="startDate">Start date</label>
+      <input id="startDate" type="date" required />
+      <span class="hint">Weather/wave/wind data covers roughly 3 months back to ~16 days ahead of today. Tide/moon/solunar work for any date.</span>
+    </div>
+    <p id="tideSourceNote" class="hint tide-source-note"></p>
+    <div class="field">
+      <label for="worldTidesKey">WorldTides API key <span class="hint">(optional &mdash; not needed for Waddy Point or any location with a bundled local tide file; only used as a fallback for other locations/years. Free signup at worldtides.info)</span></label>
+      <input id="worldTidesKey" type="password" autocomplete="off" placeholder="paste your key here" />
+    </div>
+    <div class="field-row actions">
+      <button type="submit" class="primary-btn">Update</button>
+      <button type="button" id="printBtn" class="secondary-btn">Print / Save as PDF</button>
+    </div>
+    <p id="statusMsg" class="status-msg" role="status"></p>
+  </form>
+</section>
+
+<div id="dataWarning" class="data-warning no-print" hidden></div>
+
+<div id="staleBadge" class="stale-badge no-print" hidden></div>
+
+<main id="plannerRoot">
+  <p class="loading-msg no-print">Open settings (&#9881;) to choose a location and start date, then click Update.</p>
+</main>
+
+<footer class="app-footer no-print">
+  <p>Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (weather, waves, sea temp) &middot;
+  <a href="https://www.worldtides.info/" target="_blank" rel="noopener">WorldTides</a> (tides) &middot;
+  moon phase &amp; solunar rating computed locally. Cross-check tides against the
+  <a href="https://www.bom.gov.au/ntc/IDO59001/IDO59001_2026_QLD_TP035.pdf" target="_blank" rel="noopener">BOM tide table PDF</a>.
+  See <a href="docs/OVERVIEW.md" target="_blank" rel="noopener">docs</a> for details.</p>
+</footer>
+
+<script src="js/locations.js"></script>
+<script src="js/astro.js"></script>
+<script src="js/moon.js"></script>
+<script src="js/solunar.js"></script>
+<script src="js/tides.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
