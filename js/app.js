@@ -1530,12 +1530,47 @@ function setStatus(msg, isError) {
 
 function populatePresets() {
   const sel = $("locationPreset");
-  for (const p of window.LOCATION_PRESETS) {
+  const regionSel = $("regionFilter");
+
+  // region filter options, in the same north-to-south order as LOCATION_PRESETS
+  const regions = [...new Set(window.LOCATION_PRESETS.map((p) => p.region).filter(Boolean))];
+  for (const region of regions) {
     const opt = document.createElement("option");
-    opt.value = p.id;
-    opt.textContent = p.name;
-    sel.appendChild(opt);
+    opt.value = region;
+    opt.textContent = region;
+    regionSel.appendChild(opt);
   }
+
+  function renderPresetOptions(regionFilterValue) {
+    const prevValue = sel.value;
+    sel.innerHTML = '<option value="">&mdash; custom &mdash;</option>';
+    const groups = new Map(); // region -> optgroup element
+    for (const p of window.LOCATION_PRESETS) {
+      if (regionFilterValue && p.region !== regionFilterValue) continue;
+      let group = groups.get(p.region);
+      if (!group) {
+        group = document.createElement("optgroup");
+        group.label = p.region || "Other";
+        sel.appendChild(group);
+        groups.set(p.region, group);
+      }
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      group.appendChild(opt);
+    }
+    // keep the previous selection if it's still present in the filtered list
+    if ([...sel.options].some((o) => o.value === prevValue)) {
+      sel.value = prevValue;
+    }
+  }
+
+  renderPresetOptions("");
+
+  regionSel.addEventListener("change", () => {
+    renderPresetOptions(regionSel.value);
+  });
+
   sel.addEventListener("change", () => {
     const p = window.LOCATION_PRESETS.find((x) => x.id === sel.value);
     if (p) {

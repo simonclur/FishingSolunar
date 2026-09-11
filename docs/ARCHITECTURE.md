@@ -5,7 +5,7 @@
 ```
 index.html                 markup: header, settings panel, main content mount point, footer
 css/styles.css              all styling: base, responsive/mobile, print
-js/locations.js             built-in location presets (name, lat, lon, timezone)
+js/locations.js             built-in location presets (name, region, lat, lon, timezone, tideStationId)
 js/astro.js                 moon position / rise / set / illumination (adapted from SunCalc)
 js/moon.js                  moon phase name/icon built on js/astro.js
 js/solunar.js                major/minor period + 0-5 star rating, built on js/astro.js + js/moon.js

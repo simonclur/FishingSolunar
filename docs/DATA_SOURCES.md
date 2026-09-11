@@ -58,7 +58,8 @@ key can fix.
 The app **prefers fully offline, local calculation** over any live API for
 tides, per project requirements. It works in two tiers:
 
-1. **Local tide prediction files (preferred, default for Waddy Point)**
+1. **Local tide prediction files (preferred, default for Waddy Point and 35
+   other bundled Queensland locations)**
    - Source: **Maritime Safety Queensland (MSQ) Open Data**, published via
      `data.qld.gov.au` (CKAN). MSQ publishes official, BOM-derived,
      harmonic-analysis "Standard Port" whole-year predicted high/low tide
@@ -68,6 +69,22 @@ tides, per project requirements. It works in two tiers:
      `data/tides/waddy-point-kgari-2026.csv` — **no network call needed** to
      show tide data for this location/year, satisfying the "calculate/serve
      locally wherever accurate" requirement.
+   - **36 Queensland coastal locations total are bundled** (see
+     `js/locations.js`), spanning the whole QLD coast from Thursday Island
+     (Torres Strait) down to the Gold Coast Seaway. Each was curated from the
+     78 MSQ standard-port "predicted high/low" CKAN datasets published at
+     data.qld.gov.au, favouring well-known recreational fishing/boating spots
+     and skipping most remote industrial ports, dredge/river gauges and
+     Torres Strait islands (Thursday Island kept as the one Torres Strait
+     example). Station name and authoritative lat/lon for every location were
+     scraped directly from each station's own CSV header block (MSQ embeds
+     `Tidal Station Name`, `Latitude/Longitude Degrees Minutes`, etc. as
+     metadata rows before the data rows) — no separate geocoding was needed.
+   - Presets are grouped into 10 regions for the Settings ⚙ region filter:
+     Torres Strait, Cape York, Gulf of Carpentaria, Far North Queensland,
+     Townsville/Cardwell, Mackay/Whitsundays, Capricorn Coast, Fraser Coast,
+     Sunshine Coast, South East Queensland (assigned by coastal geography,
+     roughly north to south).
    - Parsed by `js/tides.js` (`parseHiLoCsv`, `getLocalTides`), which reads
      rows like `01/01/2026 , 06:07 , 1 , 2.060` (date, time, `1`=High/`-1`=Low,
      height in metres above the station's Lowest Astronomical Tide datum).
@@ -76,7 +93,8 @@ tides, per project requirements. It works in two tiers:
      `data/tides/<tideStationId>-<year>.csv`.
    - To add another year or station: download the "Predicted High/Low CSV"
      resource for that station/year from data.qld.gov.au, save it as
-     `data/tides/<tideStationId>-<year>.csv`, no code changes required (see
+     `data/tides/<tideStationId>-<year>.csv`, add a matching entry (with
+     `region`) to `js/locations.js` — no other code changes required (see
      `docs/SETUP.md`).
 2. **WorldTides API (fallback only)** — used only for days/locations not
    covered by a local file (e.g. a custom lat/lon with no bundled station,

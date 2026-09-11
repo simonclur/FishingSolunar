@@ -16,8 +16,14 @@ No build step, no dependencies. Either:
 ## First-time configuration
 
 1. Click the **⚙️** icon (top right) to open Settings.
-2. **Preset location** — pick "Waddy Point, K'gari (Fraser Island), QLD" or
-   choose "— custom —" and fill in your own **Location name** + **Latitude /
+2. **Region** (optional) — narrow the preset list to one of 10 Queensland
+   coastal regions (Torres Strait, Cape York, Gulf of Carpentaria, Far North
+   Queensland, Townsville/Cardwell, Mackay/Whitsundays, Capricorn Coast,
+   Fraser Coast, Sunshine Coast, South East Queensland), or leave as "All
+   Queensland regions".
+3. **Preset location** — pick from 36 built-in Queensland locations (default:
+   "Waddy Point, K'gari (Fraser Island), QLD"), grouped by region, or choose
+   "— custom —" and fill in your own **Location name** + **Latitude /
    Longitude** (decimal degrees; south/west are negative).
 3. **Start date** — the first of the 14 days shown.
 4. **WorldTides API key** — sign up free at <https://www.worldtides.info/>,
@@ -47,8 +53,18 @@ Add an entry to the `LOCATION_PRESETS` array in `js/locations.js`:
 {
   id: "my-spot",
   name: "My Spot, Somewhere",
+  region: "Sunshine Coast",
   lat: -27.1234,
   lon: 153.5678,
   timezone: "Australia/Brisbane",
+  tideStationId: "my-spot", // optional: enables offline local tide data
 }
 ```
+
+`region` groups the entry under the Settings ⚙ region filter/optgroup — use
+one of the existing 10 regions or add a new one (it'll show up automatically).
+If the location has a nearby MSQ standard-port station, set `tideStationId`
+and bundle its predicted high/low CSV as
+`data/tides/<tideStationId>-<year>.csv` (see [DATA_SOURCES.md](DATA_SOURCES.md))
+so tide data works fully offline; otherwise the app falls back to the
+WorldTides API for tides.
