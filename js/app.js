@@ -11,6 +11,7 @@ const LS_KEYS = {
   start: "fishingSolunar.startDate",
   key: "fishingSolunar.worldTidesKey",
   refHeight: "fishingSolunar.refTideHeight",
+  rowLabelsCollapsed: "fishingSolunar.rowLabelsCollapsed",
 };
 
 // Trip-planning "reference height" for the tide curve row: the user types
@@ -1337,6 +1338,28 @@ function fishLabelIconSvg() {
     `</svg>`;
 }
 
+// Compact 1-2 glyph representations shown in the row-label column when it's
+// collapsed (screen view only - see `.row-label-col--collapsed` / the click
+// handler wired in `wireRowLabelToggle()`). Kept as small emoji glyphs
+// rather than new SVGs since this collapsed state is a screen-only space
+// saver (print always shows full text labels, so B&W/laminated print
+// legibility is unaffected by using colour emoji here).
+const ROW_SHORT_ICONS = {
+  solunar: "\u{1F3A3}", // fishing rod
+  tideHigh: "\u{2B06}\u{FE0F}\u{1F30A}", // up arrow + wave
+  tideLow: "\u{2B07}\u{FE0F}\u{1F30A}", // down arrow + wave
+  tideCurve: "\u{1F30A}\u{1F4C8}", // wave + chart
+  waves: "\u{1F30A}",
+  waveEnergy: "\u{26A1}",
+  seaTemp: "\u{1F30A}\u{1F321}\u{FE0F}",
+  weather: "\u{26C5}",
+  rain: "\u{1F327}\u{FE0F}",
+  wind: "\u{1F4A8}",
+  windTimeline: "\u{1F4A8}",
+  sun: "\u{2600}\u{FE0F}",
+  moon: "\u{1F319}",
+};
+
 const ROW_DEFS = [
   {
     key: "solunar", label: "Solunar", labelIcon: fishLabelIconSvg(),
@@ -1424,12 +1447,35 @@ function buildTable(days, className, scales) {
     const cellClass = row.cellClass ? ` class="${row.cellClass}"` : "";
     const labelSuffix = row.labelSub ? ` <span class="row-label-sub">${isPrint ? row.labelSub.print : row.labelSub.screen}</span>` : "";
     const labelIcon = row.labelIcon ? ` ${typeof row.labelIcon === "function" ? row.labelIcon() : row.labelIcon}` : "";
-    tr.innerHTML = `<th class="row-label-col">${row.label}${labelIcon}${labelSuffix}</th>` +
+    // Screen only: a compact 1-2 glyph stand-in for the row label, shown
+    // instead of the full text label when the row-label column is
+    // collapsed (see wireRowLabelToggle()). Print always uses the full text.
+    const shortIcon = !isPrint && ROW_SHORT_ICONS[row.key]
+      ? `<span class="row-label-short" aria-hidden="true">${ROW_SHORT_ICONS[row.key]}</span>`
+      : "";
+    const fullLabel = `<span class="row-label-full">${row.label}${labelIcon}${labelSuffix}</span>`;
+    tr.innerHTML = `<th class="row-label-col">${shortIcon}${fullLabel}</th>` +
       days.map((d) => `<td${cellClass}>${row.render(d, scales, isPrint)}</td>`).join("");
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
   return table;
+}
+
+// Toggles the row-label column between its compact icon-only form and the
+// full text-label form. Applies to the whole (screen) table at once via a
+// class on the table-scroll wrapper, toggled by clicking/tapping any
+// row-label cell - lets a mobile user reclaim horizontal space for day
+// columns most of the time, then tap once to see full row names again.
+// Persisted in localStorage so the choice survives reloads.
+function wireRowLabelToggle(container) {
+  const collapsed = localStorage.getItem(LS_KEYS.rowLabelsCollapsed) === "1";
+  container.classList.toggle("row-labels-collapsed", collapsed);
+  container.addEventListener("click", (e) => {
+    if (!e.target.closest(".row-label-col")) return;
+    const isCollapsed = container.classList.toggle("row-labels-collapsed");
+    localStorage.setItem(LS_KEYS.rowLabelsCollapsed, isCollapsed ? "1" : "0");
+  });
 }
 
 
@@ -1448,6 +1494,7 @@ function render(days, settings, tideMeta) {
   root.appendChild(screenWrap);
   wireTideCurveHover(screenWrap);
   wireRefHeightInput();
+  wireRowLabelToggle(screenWrap);
 
   // --- print-only tables, 7 days per A4 landscape page ---
   const printWrap = document.createElement("div");

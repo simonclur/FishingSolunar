@@ -160,8 +160,17 @@ table.planner-table {
   font-weight: 600;
   white-space: nowrap;
   border-right: 2px solid var(--ink);
+  cursor: pointer;
 }
-.planner-table thead th.row-label-col { z-index: 4; }
+.planner-table thead th.row-label-col { z-index: 4; cursor: default; }
+.row-label-short { display: none; font-size: 1.15rem; line-height: 1; }
+.row-label-full { display: inline; }
+/* Collapsed state: swap full text labels for the compact icon glyphs, and
+   shrink the column so day columns get more of the screen (mobile's main
+   goal - see wireRowLabelToggle()). Tap/click the column again to expand. */
+.row-labels-collapsed .planner-table .row-label-col { min-width: 0; width: 2.6rem; }
+.row-labels-collapsed .row-label-short { display: inline-block; }
+.row-labels-collapsed .row-label-full { display: none; }
 .row-label-sub {
   font-weight: 400;
   font-size: 0.8em;
@@ -173,8 +182,12 @@ table.planner-table {
 .fish-tail { fill: #1f6fb2; stroke: none; }
 .fish-eye { fill: #fff; stroke: none; }
 
-.planner-table .dow { font-weight: 700; }
-.planner-table .daymonth { font-weight: 400; color: var(--line); }
+.planner-table .dow { font-weight: 800; font-size: 1.05em; }
+.planner-table .daymonth { font-weight: 700; color: var(--ink); }
+.planner-table thead th:not(.row-label-col) {
+  padding-bottom: 0.5rem;
+  border-bottom: 3px solid var(--ink);
+}
 .stars { letter-spacing: 1px; }
 .muted { color: var(--line); font-size: 0.8em; }
 .warn { color: var(--warn); font-weight: 600; }
