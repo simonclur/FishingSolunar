@@ -758,6 +758,19 @@ async function buildPlan(settings) {
     waveScale = { max: Math.max(...allWaveHeights) * 1.1 || 1 };
   }
 
+  // Shared scales for the hourly Wave/Swell/Wind-chop *timeline* rows
+  // (waveTimelineHtml/swellTimelineHtml/windWaveTimelineHtml). These used
+  // to self-scale per-day (each day's own hourly max mapped to a full-height
+  // bar), which meant a flat 0.1-0.2m day and a genuinely rough 1.1m+ day
+  // could render with near-identical bar heights - misleading at a glance
+  // and the reported bug ("0.2m bars look as tall as 1.1m bars"). Using one
+  // fixed max across the whole 14-day window (mirroring waveScale above)
+  // makes bar height comparable both across hours *and* across days.
+  const allHourlyWaveSwell = days.flatMap((d) => (d.waveHourly || []).flatMap((h) => [h.wave, h.swell])).filter((v) => v != null);
+  const waveTimelineScale = { max: Math.max(0.3, ...allHourlyWaveSwell) * 1.1 };
+  const allHourlyWindWave = days.flatMap((d) => (d.waveHourly || []).map((h) => h.windWave)).filter((v) => v != null);
+  const windWaveTimelineScale = { max: Math.max(0.3, ...allHourlyWindWave) * 1.1 };
+
   // Oldest fetchedAt across everything we actually used (fresh network calls
   // count as "now"; cached fallbacks carry their original timestamp) tells
   // us how stale the *most stale* piece of live data is.
@@ -789,6 +802,8 @@ async function buildPlan(settings) {
     weatherNotes,
     curveScale,
     waveScale,
+    waveTimelineScale,
+    windWaveTimelineScale,
     dataFromCache: anyFromCache,
     oldestFetchedAt,
   };
@@ -1628,10 +1643,10 @@ function waveHeightStyle(heightM, isPrint) {
 // this row entirely (see ROW_DEFS `screenOnly` flag) to keep the laminated
 // sheet uncluttered - it's supplementary detail beyond the daily
 // Waves/Swell summary row, not a print essential.
-function waveTimelineHtml(d) {
+function waveTimelineHtml(d, scale) {
   if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
   const hours = d.waveHourly;
-  const maxH = Math.max(0.3, ...hours.map((h) => Math.max(h.wave || 0, h.swell || 0)));
+  const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => Math.max(h.wave || 0, h.swell || 0)));
   const barMaxPx = 22;
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
@@ -1653,10 +1668,10 @@ function waveTimelineHtml(d) {
 // wave-or-swell-whichever-taller bar - lets building/backing-off
 // groundswell *and* its direction be tracked hour-by-hour, complementing
 // the daily Waves/Swell summary row. Screen-only, print unaffected.
-function swellTimelineHtml(d) {
+function swellTimelineHtml(d, scale) {
   if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
   const hours = d.waveHourly;
-  const maxH = Math.max(0.3, ...hours.map((h) => h.swell || 0));
+  const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => h.swell || 0));
   const barMaxPx = 22;
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
@@ -1679,11 +1694,11 @@ function swellTimelineHtml(d) {
 // coarser 4h interval, matching the Wind/Current timeline rows' print
 // convention) since wind chop is a quick, useful read for boat-launch
 // safety/comfort even on the laminated sheet.
-function windWaveTimelineHtml(d, intervalHours, isPrint) {
+function windWaveTimelineHtml(d, intervalHours, isPrint, scale) {
   if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
   const step = intervalHours || 2;
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
-  const maxH = Math.max(0.3, ...hours.map((h) => h.windWave || 0));
+  const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => h.windWave || 0));
   const barMaxPx = 22;
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
@@ -1764,7 +1779,7 @@ const ROW_DEFS = [
   {
     key: "windWaveTimeline", label: "Wind chop", cellClass: "wind-timeline-cell-wrap",
     labelSub: { screen: "(2h)", print: "(4h)" },
-    render: (d, scales, isPrint) => windWaveTimelineHtml(d, isPrint ? 4 : 2, isPrint),
+    render: (d, scales, isPrint) => windWaveTimelineHtml(d, isPrint ? 4 : 2, isPrint, scales?.windWaveTimelineScale),
   },
   {
     key: "waves", label: "Waves / Swell", cellClass: "wave-icon-cell",
@@ -1773,12 +1788,12 @@ const ROW_DEFS = [
   {
     key: "waveTimeline", label: "Wave", cellClass: "wind-timeline-cell-wrap", screenOnly: true,
     labelSub: { screen: "(2h)" },
-    render: (d) => waveTimelineHtml(d),
+    render: (d, scales) => waveTimelineHtml(d, scales?.waveTimelineScale),
   },
   {
     key: "swellTimeline", label: "Swell", cellClass: "wind-timeline-cell-wrap", screenOnly: true,
     labelSub: { screen: "(2h)" },
-    render: (d) => swellTimelineHtml(d),
+    render: (d, scales) => swellTimelineHtml(d, scales?.waveTimelineScale),
   },
   {
     key: "waveEnergy", label: "Wave energy",
@@ -1895,7 +1910,7 @@ function render(days, settings, tideMeta) {
 
   const root = $("plannerRoot");
   root.innerHTML = "";
-  const scales = { curveScale: tideMeta.curveScale, waveScale: tideMeta.waveScale };
+  const scales = { curveScale: tideMeta.curveScale, waveScale: tideMeta.waveScale, waveTimelineScale: tideMeta.waveTimelineScale, windWaveTimelineScale: tideMeta.windWaveTimelineScale };
   // --- interactive (screen) table ---
   const screenWrap = document.createElement("div");
   screenWrap.className = "table-scroll no-print";
@@ -2056,8 +2071,8 @@ async function refresh() {
   saveSettings(settings);
   setStatus("Loading\u2026");
   try {
-    const { days, tideSource, tideNotes, weatherNotes, curveScale, waveScale, dataFromCache, oldestFetchedAt } = await buildPlan(settings);
-    render(days, settings, { source: tideSource, notes: tideNotes, weatherNotes, curveScale, waveScale, dataFromCache, oldestFetchedAt });
+    const { days, tideSource, tideNotes, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, dataFromCache, oldestFetchedAt } = await buildPlan(settings);
+    render(days, settings, { source: tideSource, notes: tideNotes, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, dataFromCache, oldestFetchedAt });
   } catch (err) {
     console.error(err);
     setStatus("Error loading data: " + err.message, true);

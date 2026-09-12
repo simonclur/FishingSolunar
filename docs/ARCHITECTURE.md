@@ -520,6 +520,28 @@ like every other row. Adding the printed Wind chop row was re-checked
 against the printed PDF page count (still exactly 2 pages/7-day half) per
 the print-page-count invariant noted above.
 
+**Bug fix: timeline bars must use a window-wide shared scale, not
+per-day self-scaling.** The Wave/Swell/Wind-chop timeline rows originally
+scaled each day's bars independently (`Math.max(0.3, ...that day's own
+hourly values)`), the same way `miniWindBarbSvg()`'s per-day-relative
+scaling works for the Wind timeline row. For height bars this is
+misleading: a calm day where wind chop only ever reaches 0.1-0.2m still
+stretched its tallest hour to nearly full bar height, making it look
+visually identical to a genuinely rough 1.1m+ day elsewhere in the
+14-day window (reported as "0.2m bars appear as tall as 1.1m bars").
+Fixed by computing three window-wide shared scales in `buildPlan()`
+(`waveTimelineScale` from all days' hourly wave/swell heights,
+`windWaveTimelineScale` from all days' hourly wind-wave heights - mirroring
+the existing `waveScale` used by the daily Waves/Swell icon), threading
+them through `render()`'s `scales` object into
+`waveTimelineHtml(d, scale)`/`swellTimelineHtml(d, scale)`/
+`windWaveTimelineHtml(d, intervalHours, isPrint, scale)`. Bar height is now
+comparable both hour-to-hour *and* day-to-day, matching the Waves/Swell
+icon's existing convention. (The Wind and Current timeline rows aren't
+affected by this - their mini-barb/arrow icons are shape/rotation based,
+not bar-height based, so per-day speed scaling there doesn't have the same
+visually-misleading effect.)
+
 ### Reference tide height ("planning line")
 
 For trip planning (e.g. "I need at least 1.0m of water to safely cross this
