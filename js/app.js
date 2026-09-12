@@ -1579,6 +1579,38 @@ function timelineBarSvg(heightPx, barMaxPx) {
     `</svg>`;
 }
 
+// Sea-state height colour scale (metres), shared by the screen-only
+// Wave/Swell timeline rows and the printed Wind chop row's value pill (bar
+// stays neutral/grey in print - see .print-table .wave-timeline-bar - only
+// the on-screen text value gets the colour treatment, same convention as
+// currentSpeedStyle()). Breakpoints follow the common surf-forecast
+// calm/small/moderate/rough/very-rough bands (~0.5m steps up to 2m, then
+// coarser), not an official standard, chosen to mirror the low->high
+// green->red ramp already used for wind/current speed.
+const WAVE_HEIGHT_SCALE = [
+  { max: 0.5, color: "#0064ff" },   // calm - blue
+  { max: 1.0, color: "#11d411" },   // small - green
+  { max: 1.5, color: "#fffe00" },   // moderate - yellow
+  { max: 2.0, color: "#ff9600" },   // rough - orange
+  { max: 3.0, color: "#e66400" },   // very rough - dark orange
+  { max: Infinity, color: "#b40032" }, // heavy - deep red
+];
+const WAVE_HEIGHT_WHITE_TEXT_MAX_INDEX = new Set([0, 4, 5]);
+
+function waveHeightStageIndex(heightM) {
+  for (let i = 0; i < WAVE_HEIGHT_SCALE.length; i++) {
+    if (heightM < WAVE_HEIGHT_SCALE[i].max) return i;
+  }
+  return WAVE_HEIGHT_SCALE.length - 1;
+}
+
+function waveHeightStyle(heightM, isPrint) {
+  if (heightM == null || isPrint) return "";
+  const idx = waveHeightStageIndex(heightM);
+  const textColor = WAVE_HEIGHT_WHITE_TEXT_MAX_INDEX.has(idx) ? "#fff" : "#111";
+  return ` style="background-color:${WAVE_HEIGHT_SCALE[idx].color};color:${textColor}"`;
+}
+
 // Screen-only "Wave" timeline row: a small bar (wave/swell height, whichever
 // is greater that hour) per interval across the day, so building/easing sea
 // state is visible at a glance - same interval/positioning convention as
@@ -1599,7 +1631,7 @@ function waveTimelineHtml(d) {
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>` +
-      `<div class="wind-timeline-speed wave-timeline-value">${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `<div class="wind-timeline-speed wave-timeline-value"${waveHeightStyle(val)}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
   return `<div class="wind-timeline">${cells}</div>`;
@@ -1624,7 +1656,7 @@ function swellTimelineHtml(d) {
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       (h.swellDir != null ? miniCurrentArrowSvg(h.swellDir, val) : `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>`) +
-      `<div class="wind-timeline-speed wave-timeline-value">${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `<div class="wind-timeline-speed wave-timeline-value"${waveHeightStyle(val)}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
   return `<div class="wind-timeline">${cells}</div>`;
@@ -1637,7 +1669,7 @@ function swellTimelineHtml(d) {
 // coarser 4h interval, matching the Wind/Current timeline rows' print
 // convention) since wind chop is a quick, useful read for boat-launch
 // safety/comfort even on the laminated sheet.
-function windWaveTimelineHtml(d, intervalHours) {
+function windWaveTimelineHtml(d, intervalHours, isPrint) {
   if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
   const step = intervalHours || 2;
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
@@ -1651,7 +1683,7 @@ function windWaveTimelineHtml(d, intervalHours) {
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>` +
-      `<div class="wind-timeline-speed wave-timeline-value">${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `<div class="wind-timeline-speed wave-timeline-value"${waveHeightStyle(val, isPrint)}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
   return `<div class="wind-timeline">${cells}</div>`;
@@ -1720,13 +1752,13 @@ const ROW_DEFS = [
     render: (d, scales, isPrint) => currentTimelineHtml(d, isPrint ? 4 : 2, isPrint),
   },
   {
-    key: "waves", label: "Waves / Swell", cellClass: "wave-icon-cell",
-    render: (d, scales, isPrint) => waveIconSvg(d, scales?.waveScale, isPrint),
-  },
-  {
     key: "windWaveTimeline", label: "Wind chop", cellClass: "wind-timeline-cell-wrap",
     labelSub: { screen: "(2h)", print: "(4h)" },
-    render: (d, scales, isPrint) => windWaveTimelineHtml(d, isPrint ? 4 : 2),
+    render: (d, scales, isPrint) => windWaveTimelineHtml(d, isPrint ? 4 : 2, isPrint),
+  },
+  {
+    key: "waves", label: "Waves / Swell", cellClass: "wave-icon-cell",
+    render: (d, scales, isPrint) => waveIconSvg(d, scales?.waveScale, isPrint),
   },
   {
     key: "waveTimeline", label: "Wave", cellClass: "wind-timeline-cell-wrap", screenOnly: true,

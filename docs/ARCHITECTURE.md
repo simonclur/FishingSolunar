@@ -480,6 +480,28 @@ first version of the printed Wind chop row's bars were invisible on the
 printed PDF despite looking fine on screen. `.print-table .wave-timeline-bar`
 forces the fill to solid black (opacity 1) for the laminated sheet.
 
+**Wind chop row placement + colour** (later refinement): the printed Wind
+chop row was moved to sit directly under Current (before Waves/Swell) in
+`ROW_DEFS` - since `ROW_DEFS` is a single flat array shared by both screen
+and print tables, this reordered both views identically (no separate
+screen/print ordering mechanism exists). Its print bar fill was changed
+from solid black to mid-grey (`#888`) to visually de-emphasise it slightly
+relative to the black tide-curve/wave-icon ink, and its `.wind-timeline-cell`
+print width got `white-space: nowrap` plus a smaller `.wave-timeline-value`
+font-size (6pt \u2192 5.2pt) and tightened `letter-spacing` after values like
+"0.7"/"1.0" were found (via `pdftoppm` visual rendering) to overflow/overlap
+their 5.2mm-wide print cell.
+
+**Screen-view colour scales for Wave/Swell/Wind-chop timelines**: a new
+shared `WAVE_HEIGHT_SCALE`/`waveHeightStyle()` (metres, blue\u2192green\u2192
+yellow\u2192orange\u2192red, same low\u2192high convention as
+`CURRENT_SPEED_SCALE`/`WIND_SPEED_COLORS`) colours the value pill (not the
+bar) in `waveTimelineHtml()`, `swellTimelineHtml()`, and
+`windWaveTimelineHtml()`. Print is unaffected - `waveHeightStyle()` returns
+`""` when `isPrint`, and `.wave-timeline-value` is included in the existing
+`.print-table` pill-stripping selector list (alongside `.wind-timeline-speed`
+etc.) as a defensive backstop.
+
 **Fitting the Wind chop row onto 2 pages**: adding a fourth printed
 timeline-style row (Wind chop, alongside Wind and Current) pushed the
 print table past a single A4-landscape page again. Rather than shrinking
