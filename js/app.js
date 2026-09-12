@@ -203,7 +203,7 @@ function degToCompass(deg) {
 
 function fmtTime(date, tz) {
   if (!date) return "\u2014";
-  return new Intl.DateTimeFormat("en-AU", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: tz }).format(date);
+  return new Intl.DateTimeFormat("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz }).format(date);
 }
 
 function isoDate(d) {
