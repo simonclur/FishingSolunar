@@ -1654,9 +1654,10 @@ function miniWindBarbSvg(windDir, windSpeed, maxSpeedForScale, outline) {
   const fromDeg = windDir;
   const scale = Math.min(windSpeed / (maxSpeedForScale || 60), 1);
   const cx = 11, cy = 11;
-  // halfLen (barb length from centre) 5..9.5, tailW (base width) 2.5..7.5.
+  // halfLen (barb length from centre) 5..9.5, tailW (base width) 1.5..9.5 -
+  // width range widened so light vs strong wind is obvious at a glance.
   const halfLen = 5 + scale * 4.5;
-  const tailW = 2.5 + scale * 5;
+  const tailW = 1.5 + scale * 8;
   const halfTail = tailW / 2;
   const tailY = -halfLen;
   const tipY = halfLen;
