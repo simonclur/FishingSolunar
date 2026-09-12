@@ -96,9 +96,26 @@ tides, per project requirements. It works in two tiers:
      `data/tides/<tideStationId>-<year>.csv`, add a matching entry (with
      `region`) to `js/locations.js` — no other code changes required (see
      `docs/SETUP.md`).
-2. **WorldTides API (fallback only)** — used only for days/locations not
-   covered by a local file (e.g. a custom lat/lon with no bundled station,
-   or a future year not yet published by MSQ).
+2. **WorldTides API (fallback, and the primary tide source for Tasmania, NSW
+   & Victoria presets)** — used for any days/locations not covered by a local
+   file (e.g. a custom lat/lon with no bundled station, a future year not yet
+   published by MSQ, or any of the 32 Tasmania/NSW/Victoria presets below).
+   - Tasmania, New South Wales and Victoria presets have **no bundled local
+     tide CSV**, because — unlike Queensland's MSQ open-data CKAN publisher —
+     none of these states currently publish a free, machine-readable
+     "predicted high/low" dataset: Tasmania's and NSW's state open-data
+     portals only publish *observed/historical* gauge monitoring data (not
+     forward predictions), Victoria's DataVic only publishes storm-surge/
+     inundation modelling, and the Bureau of Meteorology / Australian
+     Hydrographic Office's official Australian National Tide Tables (ANTT)
+     are published as PDF/interactive web pages only (the full machine-
+     readable AusTides dataset is a paid product). So these 32 locations
+     rely entirely on the WorldTides API fallback — **a WorldTides API key
+     is required in ⚙ Settings to see tide highs/lows for these locations.**
+   - If a free official CSV/API source for any of these states is found in
+     future, the same `tideStationId` + bundled-CSV pattern used for
+     Queensland can be applied to add fully-offline local tide data for
+     them too.
    - Endpoint: `https://www.worldtides.info/api/v3`, requires a free
      user-supplied API key entered once in ⚙️ Settings and cached in
      `localStorage` (`fishingSolunar.worldTidesKey`) — sent only to

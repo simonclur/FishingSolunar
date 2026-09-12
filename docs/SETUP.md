@@ -16,15 +16,17 @@ No build step, no dependencies. Either:
 ## First-time configuration
 
 1. Click the **⚙️** icon (top right) to open Settings.
-2. **Region** (optional) — narrow the preset list to one of 10 Queensland
-   coastal regions (Torres Strait, Cape York, Gulf of Carpentaria, Far North
-   Queensland, Townsville/Cardwell, Mackay/Whitsundays, Capricorn Coast,
-   Fraser Coast, Sunshine Coast, South East Queensland), or leave as "All
-   Queensland regions".
-3. **Preset location** — pick from 36 built-in Queensland locations (default:
+2. **Region** (optional) — narrow the preset list to one of 13 regions: 10
+   Queensland coastal regions (Torres Strait, Cape York, Gulf of Carpentaria,
+   Far North Queensland, Townsville/Cardwell, Mackay/Whitsundays, Capricorn
+   Coast, Fraser Coast, Sunshine Coast, South East Queensland) plus Tasmania,
+   New South Wales and Victoria, or leave as "All regions".
+3. **Preset location** — pick from 68 built-in Australian locations (default:
    "Waddy Point, K'gari (Fraser Island), QLD"), grouped by region, or choose
    "— custom —" and fill in your own **Location name** + **Latitude /
-   Longitude** (decimal degrees; south/west are negative).
+   Longitude** (decimal degrees; south/west are negative). Queensland presets
+   include bundled offline tide data; Tasmania, NSW and Victoria presets
+   need a WorldTides API key (below) to show tide highs/lows.
 3. **Start date** — the first of the 14 days shown.
 4. **WorldTides API key** — sign up free at <https://www.worldtides.info/>,
    copy your key in. Without a key, tide high/low cells show "—" and a
