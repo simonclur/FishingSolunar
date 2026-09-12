@@ -557,6 +557,62 @@ affected by this - their mini-barb/arrow icons are shape/rotation based,
 not bar-height based, so per-day speed scaling there doesn't have the same
 visually-misleading effect.)
 
+**Gap-free, graduated colour backgrounds for Current/Wave/Swell/Wind-chop
+timelines.** Originally each hourly cell's colour was applied only as a
+small inline `background-color` pill directly on the value text
+(`.current-timeline-speed`/`.wave-timeline-value`), sized to the text's own
+natural width - this left visible white gaps between adjacent cells'
+pills, unlike the Wind timeline row, which already used a separate set of
+absolutely-positioned `.wind-timeline-bg` divs spanning each interval's
+*full* cell width, sitting behind the icon/label/value content. Fixed by
+extracting a shared `timelineGradientBgStrips(hours, step, colorForHour,
+isPrint)` helper (reusing the same `.wind-timeline-bg` CSS class) and
+calling it from `currentTimelineHtml()`, `waveTimelineHtml()`,
+`swellTimelineHtml()`, and `windWaveTimelineHtml()`; the per-value inline
+pill background was removed (only the text `color` is still set inline,
+for contrast). At the same time, per the user's follow-up request for
+"a graduated transition between different colours", each strip is no
+longer a single flat colour but a left-to-right CSS
+`linear-gradient(to right, thisHourColor, nextHourColor)` - since one
+strip's right edge colour always equals the next strip's left edge
+colour, adjacent strips read as one continuous smoothly-blended band with
+no visible seams at cell boundaries, rather than flat blocks butted
+together.
+
+This only closes the horizontal (hour-to-hour) gaps/seams; the
+*within-row* colour itself was still a discrete band lookup
+(`currentSpeedStageIndex()`/`waveHeightStageIndex()` picking one of
+6-7 fixed colours per band, jumping abruptly at each threshold). To make
+the colour itself change smoothly with the underlying value too, both
+were replaced with a shared `interpolatedScaleColor(scale, value)`
+helper that linearly interpolates RGB between a band's colour and the
+adjacent band's colour based on how far the value sits between their
+thresholds (anchored so the first band's colour is flat at/below its own
+threshold, and each subsequent band's colour is "fully reached" exactly
+at its own `max`). `currentSpeedStyle()`/`waveHeightStyle()` and the old
+`*StageIndex()`/`*_WHITE_TEXT_MAX_INDEX` lookup-table plumbing were
+removed since the interpolated colour is now looked up directly at each
+call site; a new `readableTextColor(hex)` (luminance-based, ITU-R BT.601
+weights) replaces the old fixed white-text index sets, since text
+contrast now needs to work against *any* interpolated colour, not just a
+handful of known discrete ones. `WIND_SPEED_COLORS`/`windSpeedColorIndex()`
+(the Wind row's already near-continuous 27-band-per-knot scale) were left
+untouched, since the "graduated transition" request was made specifically
+in the context of the Current/Wave/Swell/Wind-chop rows. As before, all
+of this is screen-only - `timelineGradientBgStrips()` returns `""` when
+`isPrint`, keeping the printed Wind chop row's grey SVG bars unaffected.
+
+**Wind (2h) row adopted the same gradient-strip helper too** (a follow-up
+request, since the two rows now look inconsistent otherwise): its own
+bespoke `bgStrips` construction in `windTimelineHtml()` (a `hours.map()`
+building one flat-colour `.wind-timeline-bg` div per interval) was
+replaced with a call to the same `timelineGradientBgStrips()` helper,
+passing `WIND_SPEED_COLORS[windSpeedColorIndex(h.speed)]` as the
+per-hour colour lookup - so the Wind row's already-fine-grained 27-band
+scale itself is unchanged (no interpolation added there, per the earlier
+note above), but the *background rendering* is now the same shared
+gap-free, gradient-blended strip used by the other four timeline rows.
+
 ### Reference tide height ("planning line")
 
 For trip planning (e.g. "I need at least 1.0m of water to safely cross this

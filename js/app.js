@@ -842,6 +842,49 @@ function windSpeedColorIndex(speedKmh) {
   return Math.max(0, Math.min(WIND_SPEED_COLORS.length - 1, Math.round(knots)));
 }
 
+// Parses a "#rrggbb" hex colour string into an [r,g,b] byte array.
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function rgbToHex([r, g, b]) {
+  const c = (v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0");
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+// Continuous colour lookup for a `{max, color}` band scale (as used by
+// CURRENT_SPEED_SCALE / WAVE_HEIGHT_SCALE below), replacing a hard
+// per-band lookup with smooth linear RGB interpolation so colour changes
+// gradually with the value instead of jumping abruptly at each threshold.
+// Treats each band's own `max` as an anchor point where its colour is
+// "fully reached", and linearly blends between a band's colour and the
+// next band's colour across the value range leading up to that next
+// threshold (the first band's colour is anchored at value 0). Values at
+// or beyond the second-to-last threshold clamp to the final band's colour
+// (its `max` is Infinity, so there's no "next" anchor to blend towards).
+function interpolatedScaleColor(scale, value) {
+  const n = scale.length;
+  // Values within the first band render flat at its colour (no "previous"
+  // colour to blend from); each subsequent band's colour is reached
+  // exactly at its own `max` threshold, with a linear RGB blend from the
+  // previous band's colour across the range leading up to it. The final
+  // band's `max` is Infinity, so anything beyond the second-to-last
+  // threshold clamps to the final colour.
+  if (value <= scale[0].max) return scale[0].color;
+  for (let i = 1; i < n - 1; i++) {
+    const lo = scale[i - 1].max;
+    const hi = scale[i].max;
+    if (value <= hi) {
+      const t = hi === lo ? 1 : (value - lo) / (hi - lo);
+      const from = hexToRgb(scale[i - 1].color);
+      const to = hexToRgb(scale[i].color);
+      return rgbToHex(from.map((c, k) => c + (to[k] - c) * t));
+    }
+  }
+  return scale[n - 1].color;
+}
+
 // Returns inline style (not just a class) since the colour is a continuous
 // per-knot scale rather than a few fixed buckets - matches windfinder's own
 // approach of one CSS class per knot value.
@@ -916,20 +959,15 @@ const CURRENT_SPEED_SCALE = [
   { max: 7.4, color: "#e66400" },   // 3-4kt: dark orange/red
   { max: Infinity, color: "#b40032" }, // 4kt+: deep red/magenta
 ];
-const CURRENT_SPEED_WHITE_TEXT_MAX_INDEX = new Set([0, 1, 5, 6]);
 
-function currentSpeedStageIndex(speedKmh) {
-  for (let i = 0; i < CURRENT_SPEED_SCALE.length; i++) {
-    if (speedKmh < CURRENT_SPEED_SCALE[i].max) return i;
-  }
-  return CURRENT_SPEED_SCALE.length - 1;
-}
-
-function currentSpeedStyle(speedKmh, isPrint) {
-  if (speedKmh == null || isPrint) return "";
-  const idx = currentSpeedStageIndex(speedKmh);
-  const textColor = CURRENT_SPEED_WHITE_TEXT_MAX_INDEX.has(idx) ? "#fff" : "#111";
-  return ` style="background-color:${CURRENT_SPEED_SCALE[idx].color};color:${textColor}"`;
+// Perceptual luminance (per ITU-R BT.601) of a "#rrggbb" colour, used to
+// pick black/white text for contrast against an interpolated (not a fixed
+// lookup-table) background colour - replaces the old white-text index set
+// approach, which only worked for a small fixed set of discrete colours.
+function readableTextColor(hex) {
+  const [r, g, b] = hexToRgb(hex);
+  const luminance = (r * 299 + g * 587 + b * 114) / 1000;
+  return luminance < 140 ? "#fff" : "#111";
 }
 
 // Barometric pressure (hPa) colour scale - screen-only Pressure row.
@@ -1533,14 +1571,7 @@ function windTimelineHtml(d, intervalHours, isPrint) {
   const step = intervalHours || 2;
   const hours = d.windHourly.filter((h) => h.hour % step === 0);
   const maxSpeedForScale = Math.max(60, ...hours.map((h) => h.speed || 0));
-  const cellWidthPct = (step / 24) * 100;
-  const bgStrips = isPrint ? "" : hours.map((h) => {
-    if (h.speed == null) return "";
-    const leftPct = (h.hour / 24) * 100 - cellWidthPct / 2;
-    const idx = windSpeedColorIndex(h.speed);
-    const color = WIND_SPEED_COLORS[idx];
-    return `<div class="wind-timeline-bg" style="left:${leftPct.toFixed(2)}%;width:${cellWidthPct.toFixed(2)}%;background:${color};"></div>`;
-  }).join("");
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.speed != null ? WIND_SPEED_COLORS[windSpeedColorIndex(h.speed)] : null, isPrint);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
@@ -1552,6 +1583,31 @@ function windTimelineHtml(d, intervalHours, isPrint) {
       `</div>`;
   }).join("");
   return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
+}
+
+// Builds a row of edge-to-edge, gradient-shaded background strips behind a
+// timeline row's cells - shared by the Current/Wave/Swell/Wind chop rows
+// below, mirroring the Wind row's own `.wind-timeline-bg` strip pattern
+// above (kept separate there since it also needs the discrete
+// WIND_SPEED_COLORS/windSpeedColorIndex lookup rather than an interpolated
+// scale). Each strip spans one interval's full cell width, and rather than
+// a single flat colour, is itself a left-to-right CSS `linear-gradient`
+// from this interval's colour to the *next* interval's colour - since one
+// strip's right-hand colour always matches the next strip's left-hand
+// colour, the strips read as one continuous, smoothly-graduated band
+// across the whole row with no visible seams, rather than discrete flat
+// blocks butted together. Screen-only (returns "" when isPrint, same
+// convention as the colour styling functions themselves).
+function timelineGradientBgStrips(hours, step, colorForHour, isPrint) {
+  if (isPrint) return "";
+  const cellWidthPct = (step / 24) * 100;
+  return hours.map((h, i) => {
+    const color = colorForHour(h);
+    if (!color) return "";
+    const nextColor = colorForHour(hours[i + 1]) || color;
+    const leftPct = (h.hour / 24) * 100 - cellWidthPct / 2;
+    return `<div class="wind-timeline-bg" style="left:${leftPct.toFixed(2)}%;width:${cellWidthPct.toFixed(2)}%;background:linear-gradient(to right, ${color}, ${nextColor});"></div>`;
+  }).join("");
 }
 
 // Small arrow showing travel direction for either ocean current or swell
@@ -1592,16 +1648,18 @@ function currentTimelineHtml(d, intervalHours, isPrint) {
   const step = intervalHours || 2;
   const hours = d.currentHourly.filter((h) => h.hour % step === 0);
   const maxSpeedForScale = Math.max(3, ...hours.map((h) => h.speed || 0));
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.speed != null ? interpolatedScaleColor(CURRENT_SPEED_SCALE, h.speed) : null, isPrint);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
+    const textColor = !isPrint && h.speed != null ? readableTextColor(interpolatedScaleColor(CURRENT_SPEED_SCALE, h.speed)) : "";
     return `<div class="wind-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       miniCurrentArrowSvg(h.dir, h.speed, maxSpeedForScale) +
-      `<div class="wind-timeline-speed current-timeline-speed"${currentSpeedStyle(h.speed, isPrint)}>${h.speed != null ? h.speed.toFixed(1) : "\u2014"}</div>` +
+      `<div class="wind-timeline-speed current-timeline-speed"${textColor ? ` style="color:${textColor}"` : ""}>${h.speed != null ? h.speed.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
-  return `<div class="wind-timeline">${cells}</div>`;
+  return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
 }
 
 // Small vertical bar rendered as an inline SVG <rect> rather than a CSS
@@ -1634,21 +1692,6 @@ const WAVE_HEIGHT_SCALE = [
   { max: 3.0, color: "#e66400" },   // very rough - dark orange
   { max: Infinity, color: "#b40032" }, // heavy - deep red
 ];
-const WAVE_HEIGHT_WHITE_TEXT_MAX_INDEX = new Set([0, 4, 5]);
-
-function waveHeightStageIndex(heightM) {
-  for (let i = 0; i < WAVE_HEIGHT_SCALE.length; i++) {
-    if (heightM < WAVE_HEIGHT_SCALE[i].max) return i;
-  }
-  return WAVE_HEIGHT_SCALE.length - 1;
-}
-
-function waveHeightStyle(heightM, isPrint) {
-  if (heightM == null || isPrint) return "";
-  const idx = waveHeightStageIndex(heightM);
-  const textColor = WAVE_HEIGHT_WHITE_TEXT_MAX_INDEX.has(idx) ? "#fff" : "#111";
-  return ` style="background-color:${WAVE_HEIGHT_SCALE[idx].color};color:${textColor}"`;
-}
 
 // Screen-only "Wave" timeline row: a small bar (wave/swell height, whichever
 // is greater that hour) per interval across the day, so building/easing sea
@@ -1662,18 +1705,21 @@ function waveTimelineHtml(d, scale) {
   const hours = d.waveHourly;
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => Math.max(h.wave || 0, h.swell || 0)));
   const barMaxPx = 22;
+  const valOf = (h) => h ? (h.wave != null ? h.wave : h.swell) : null;
+  const bgStrips = timelineGradientBgStrips(hours, 2, (h) => { const v = valOf(h); return v != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, v) : null; }, false);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
-    const val = h.wave != null ? h.wave : h.swell;
+    const val = valOf(h);
     const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
+    const textColor = val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>` +
-      `<div class="wind-timeline-speed wave-timeline-value"${waveHeightStyle(val)}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
-  return `<div class="wind-timeline">${cells}</div>`;
+  return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
 }
 
 // Screen-only "Swell" timeline row: same layout/interval convention as the
@@ -1687,18 +1733,20 @@ function swellTimelineHtml(d, scale) {
   const hours = d.waveHourly;
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => h.swell || 0));
   const barMaxPx = 22;
+  const bgStrips = timelineGradientBgStrips(hours, 2, (h) => h && h.swell != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, h.swell) : null, false);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     const val = h.swell;
     const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
+    const textColor = val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       (h.swellDir != null ? miniCurrentArrowSvg(h.swellDir, val, maxH) : `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>`) +
-      `<div class="wind-timeline-speed wave-timeline-value"${waveHeightStyle(val)}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
-  return `<div class="wind-timeline">${cells}</div>`;
+  return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
 }
 
 // "Wind chop" timeline row: hourly wind-wave height (the locally
@@ -1714,18 +1762,20 @@ function windWaveTimelineHtml(d, intervalHours, isPrint, scale) {
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => h.windWave || 0));
   const barMaxPx = 22;
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.windWave != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, h.windWave) : null, isPrint);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     const val = h.windWave;
     const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
+    const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>` +
-      `<div class="wind-timeline-speed wave-timeline-value"${waveHeightStyle(val, isPrint)}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
-  return `<div class="wind-timeline">${cells}</div>`;
+  return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
 }
 
 
