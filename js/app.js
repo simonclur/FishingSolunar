@@ -1558,14 +1558,28 @@ function windTimelineHtml(d, intervalHours, isPrint) {
 // barb, which points where wind is blowing FROM/TO with a tail/tip shape -
 // current direction here is shown as a simple arrow pointing the direction
 // the water is flowing towards, consistent with the arrow used in
-// waveIconSvg() above).
-function miniCurrentArrowSvg(currentDir, currentSpeed) {
+// waveIconSvg() above). `maxScale` (optional) lets a caller normalise
+// `currentSpeed` against a known max so both stroke width and arrow length
+// scale from thin/short (weak) to thick/long (strong) - mirrors
+// `miniWindBarbSvg()`'s speed-scaled tail width. Without `maxScale` (e.g.
+// the Swell timeline row, which reuses this same shape for a travel-
+// direction arrow but passes a wave height in metres, not a current speed)
+// the arrow renders at its original fixed thin/short size, unaffected.
+function miniCurrentArrowSvg(currentDir, currentSpeed, maxScale) {
   if (currentDir == null || currentSpeed == null) return '<span class="muted">\u2014</span>';
   const travelDeg = (currentDir + 180) % 360;
+  const scale = maxScale ? Math.min(Math.max(currentSpeed / maxScale, 0), 1) : null;
+  // Thin (1px) + short (4px half-length) for weak current, thick (3px) +
+  // long (8px half-length) for strong - halfLen 4..8, strokeW 1..3.
+  const halfLen = scale != null ? 4 + scale * 4 : 6;
+  const strokeW = scale != null ? 1 + scale * 2 : 1.6;
+  const headHalf = scale != null ? 2 + scale * 2.5 : 4;
+  const tailY = halfLen, tipY = -halfLen;
+  const headBaseY = tipY + (scale != null ? 3 + scale * 2 : 4);
   return `<svg class="current-arrow-mini-svg" viewBox="0 0 22 22" role="img" aria-label="Current direction at this time">` +
     `<g transform="translate(11,11) rotate(${travelDeg.toFixed(0)})">` +
-    `<line x1="0" y1="6" x2="0" y2="-6" class="current-arrow-mini"></line>` +
-    `<polyline points="-4,-2 0,-6 4,-2" class="current-arrow-mini"></polyline>` +
+    `<line x1="0" y1="${tailY.toFixed(1)}" x2="0" y2="${tipY.toFixed(1)}" class="current-arrow-mini" style="stroke-width:${strokeW.toFixed(1)}"></line>` +
+    `<polyline points="${(-headHalf).toFixed(1)},${headBaseY.toFixed(1)} 0,${tipY.toFixed(1)} ${headHalf.toFixed(1)},${headBaseY.toFixed(1)}" class="current-arrow-mini" style="stroke-width:${strokeW.toFixed(1)}"></polyline>` +
     `</g></svg>`;
 }
 
@@ -1578,12 +1592,13 @@ function currentTimelineHtml(d, intervalHours, isPrint) {
   if (!d.currentHourly || !d.currentHourly.length) return '<span class="muted">\u2014</span>';
   const step = intervalHours || 2;
   const hours = d.currentHourly.filter((h) => h.hour % step === 0);
+  const maxSpeedForScale = Math.max(3, ...hours.map((h) => h.speed || 0));
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     return `<div class="wind-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      miniCurrentArrowSvg(h.dir, h.speed) +
+      miniCurrentArrowSvg(h.dir, h.speed, maxSpeedForScale) +
       `<div class="wind-timeline-speed current-timeline-speed"${currentSpeedStyle(h.speed, isPrint)}>${h.speed != null ? h.speed.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");

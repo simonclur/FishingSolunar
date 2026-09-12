@@ -369,7 +369,19 @@ they read as one family of "at a glance" water/weather icons:
   blue-to-red ramp in the same spirit as the Wind row's Windfinder-derived
   scale, but with much lower breakpoints (~0.5-4kt) since coastal tidal
   currents rarely reach the tens-of-knots range wind does; print stays
-  plain black/no background as usual.
+  plain black/no background as usual. The arrow itself is also
+  speed-scaled (`miniCurrentArrowSvg(dir, speed, maxScale)`'s optional
+  third argument): stroke width ramps 1px\u21923px and half-length ramps
+  4px\u21928px as speed goes from 0 to that day's max current speed (at
+  least 3km/h, so a flat/near-zero day doesn't stretch its weakest arrows
+  to "full strength" the way the fixed per-day timeline-bar scaling bug
+  once did for Wave/Swell/Wind-chop - see the bug-fix note below), giving
+  a thin/short arrow for weak current and a thick/long one for strong,
+  mirroring `miniWindBarbSvg()`'s speed-scaled tail width. The Swell
+  timeline row reuses this same arrow shape for its travel-direction glyph
+  but calls it without `maxScale`, so it keeps its original fixed
+  thin/short size there (that row already has its own bar+colour encoding
+  of magnitude, so the arrow is direction-only).
 
 All three icon systems share `overflow: visible` on their SVG elements
 (`.tide-curve-svg`, `.wind-icon-svg`) since labels/markers/arrows are
