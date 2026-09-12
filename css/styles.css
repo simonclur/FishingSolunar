@@ -499,45 +499,29 @@ table.planner-table {
   .no-print { display: none !important; }
   .print-only { display: block !important; }
 
-  /* Declared as plain A4 portrait (no "landscape" keyword) because iOS
-     Safari ignores `@page { size: ... landscape }` and always prints
-     portrait regardless - it silently falls back to the default page
-     size/orientation. Desktop browsers honour a plain portrait @page
-     the same way, so every browser ends up printing an A4 portrait
-     sheet; the actual landscape content is then rotated 90deg via
-     .print-page-rotate below to fill that portrait sheet correctly. */
-  @page { size: A4 portrait; margin: 5mm; }
+  /* Default: plain landscape @page, honoured correctly by desktop
+     browsers (Chrome, Firefox, Edge, macOS Safari) and most mobile
+     browsers - the simplest, most direct way to print landscape.
+     iOS Safari is the one exception: it ignores the "landscape" keyword
+     here and always prints portrait regardless. Rather than working
+     around that for every browser, js/app.js feature-detects iOS Safari
+     specifically and injects an override <style> (see
+     `applyIosPrintOrientationFix()`) that switches @page to portrait and
+     rotates the content 90deg only for that browser. */
+  @page { size: A4 landscape; margin: 5mm; }
 
   body { background: #fff; color: #000; }
 
   .print-page {
     page-break-after: always;
-    /* Portrait page box (A4 minus margins) the browser prints onto. */
-    width: 200mm;
-    height: 287mm;
-    overflow: hidden;
-    position: relative;
   }
   .print-page:last-child { page-break-after: auto; }
 
-  /* Rotate the landscape-oriented content 90deg so it fills the portrait
-     print page edge-to-edge (see .print-page comment above). Flex column
-     so the table stretches to fill the full box height (which becomes
-     the printed page's *width* after rotation) instead of leaving a gap
-     when the table's natural content height is shorter than the page. */
   .print-page-rotate {
-    width: 287mm;
-    height: 200mm;
-    transform: rotate(90deg);
-    transform-origin: top left;
-    position: absolute;
-    top: 0;
-    left: 200mm;
     display: flex;
     flex-direction: column;
   }
   .print-page-rotate .print-heading { flex: 0 0 auto; }
-  .print-page-rotate table.print-table { flex: 1 1 auto; height: 100%; }
 
   .print-heading {
     font-size: 12pt;

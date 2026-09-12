@@ -585,27 +585,27 @@ boat-launch safety/comfort read even on the laminated sheet:
   (a smaller wave line plus an orange lightning bolt) for Wave energy.
   New `.row-label-short-icon`/`.wind-gust-*`/`.wave-swirl-*`/
   `.wave-energy-bolt` CSS added; other rows' emoji glyphs are unchanged.
-- **Forced-landscape print now works on iOS Safari** - iOS Safari ignores
-  `@page { size: A4 landscape }` and always prints portrait regardless,
-  silently reverting to the device default; this clipped/rescaled the
-  print tables on iPhone. Fixed by declaring `@page { size: A4 portrait }`
-  (which every browser, including iOS Safari, honours) and rotating the
-  actual landscape table content 90deg to fill that portrait page via a
-  new `.print-page-rotate` wrapper (`transform: rotate(90deg)` with
-  `transform-origin: top left`, sized/positioned to exactly fill the
-  200mm x 287mm printable area). `.print-page` is now a fixed-size,
-  `overflow: hidden`, `position: relative` box that clips to the page;
-  each print page's heading + table live inside the rotated wrapper.
-  Verified via Puppeteer PDF export (`preferCSSPageSize: true`) that both
-  print pages render full-bleed and correctly oriented.
-- **Rotated print content stretched to fill the full page width** - after
-  the portrait+rotate fix above, the heading+table's natural content
-  height was shorter than the 200mm target box, so once rotated it left
-  a blank gap instead of filling the printed page's full width. Fixed by
-  making `.print-page-rotate` a flex column (`heading: flex: 0 0 auto`,
-  `table.print-table: flex: 1 1 auto; height: 100%`) so the table
-  stretches its rows to consume all remaining space in the box before
-  rotation, filling the page edge-to-edge after the 90deg rotation.
+- **Landscape print by default, portrait+rotate only for iOS Safari** -
+  iOS Safari ignores `@page { size: A4 landscape }` and always prints
+  portrait regardless, clipping/rescaling the print tables on iPhone;
+  no other browser has this problem, and there's no print-media CSS
+  feature to detect it directly. Rather than making every browser pay
+  for a portrait+rotate workaround, `styles.css` keeps the simple
+  `@page { size: A4 landscape; margin: 5mm }` as the default (correct on
+  desktop Chrome/Firefox/Edge, macOS Safari, and most non-iOS mobile
+  browsers). `js/app.js` adds `isIosSafari()` (UA/platform sniffing,
+  including the iPadOS-reports-as-Mac case via
+  `navigator.maxTouchPoints > 1`) and `applyIosPrintOrientationFix()`,
+  called once at startup: only when iOS Safari is detected, it injects a
+  `<style>` tag (scoped inside `@media print`) that overrides `@page` to
+  portrait and rotates the print content 90deg via the `.print-page-rotate`
+  wrapper (`transform: rotate(90deg)`, sized/positioned to exactly fill
+  the 200mm x 287mm printable area, flex-stretched so the table fills
+  the box with no gap after rotation) - identical output to the previous
+  always-portrait approach, but scoped to only the browser that needs it.
+  Verified via Puppeteer PDF export (`preferCSSPageSize: true`) with the
+  default UA (plain landscape A4, fills page) and with a spoofed iPhone
+  Safari UA (portrait A4, rotated content fills page).
 - **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
   parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
   existing swell line using the Marine API's daily `wind_wave_height_max`/

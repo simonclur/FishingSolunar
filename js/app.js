@@ -2104,6 +2104,50 @@ function buildTable(days, className, scales, printRowToggles) {
 // row-label cell - lets a mobile user reclaim horizontal space for day
 // columns most of the time, then tap once to see full row names again.
 // Persisted in localStorage so the choice survives reloads.
+// iOS Safari ignores `@page { size: ... landscape }` and always prints
+// portrait regardless of CSS - there is no print-media feature to detect
+// this directly, so we feature-detect iOS Safari itself via UA/platform
+// sniffing and, only for that browser, inject an override stylesheet
+// that switches @page to portrait and rotates the print content 90deg
+// to fill it (all other browsers keep the simpler plain-landscape @page
+// declared in styles.css). Runs once at startup; the injected <style>
+// stays in the page (it's `@media print`-scoped so it's a no-op on
+// screen) and applies automatically whenever the user prints.
+function isIosSafari() {
+  const ua = navigator.userAgent || "";
+  const isIos = /iP(hone|ad|od)/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS reports as Mac
+  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+  return isIos && isSafari;
+}
+
+function applyIosPrintOrientationFix() {
+  if (!isIosSafari()) return;
+  const style = document.createElement("style");
+  style.textContent = `
+    @media print {
+      @page { size: A4 portrait; margin: 5mm; }
+      .print-page {
+        width: 200mm;
+        height: 287mm;
+        overflow: hidden;
+        position: relative;
+      }
+      .print-page-rotate {
+        width: 287mm;
+        height: 200mm;
+        transform: rotate(90deg);
+        transform-origin: top left;
+        position: absolute;
+        top: 0;
+        left: 200mm;
+      }
+      .print-page-rotate table.print-table { flex: 1 1 auto; height: 100%; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 function wireRowLabelToggle(container) {
   const collapsed = localStorage.getItem(LS_KEYS.rowLabelsCollapsed) === "1";
   container.classList.toggle("row-labels-collapsed", collapsed);
@@ -2375,6 +2419,7 @@ function init() {
   });
   $("printBtn").addEventListener("click", () => window.print());
   $("forceRefreshBtn").addEventListener("click", forceRefresh);
+  applyIosPrintOrientationFix();
 
   // auto-load on first visit if we have a saved/preset location
   refresh();
