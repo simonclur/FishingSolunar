@@ -433,14 +433,11 @@ table.planner-table {
 .current-arrow-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; }
 .current-arrow-mini { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 
-/* Screen-only Wave timeline row: a small vertical bar per interval,
-   height-scaled against that day's own hourly max (same "day-relative"
-   scaling as the mini wind barb, not the 14-day waveScale used by the
-   main Waves/Swell row icon). */
+/* Wave/Swell/Wind chop timeline rows: use the same direction-scaled arrow
+   as the Current row (miniCurrentArrowSvg()) rather than a height bar, so
+   direction is visible too and the arrow height doesn't depend on a fixed
+   pixel scale that can overflow its row (unlike the old vertical bars). */
 .wave-timeline-cell .wind-timeline-hour { margin-bottom: 0.1rem; }
-.wave-timeline-bar-wrap { height: 22px; display: flex; align-items: flex-end; }
-.wave-timeline-bar-svg { display: block; overflow: visible; }
-.wave-timeline-bar { fill: var(--accent); opacity: 0.65; }
 .wave-timeline-value { font-size: 0.46rem; }
 
 
@@ -585,7 +582,6 @@ table.planner-table {
   .print-table .wind-barb-mini { fill: #000; }
   .print-table .current-arrow-mini-svg { width: 4mm; height: 4mm; }
   .print-table .current-arrow-mini { stroke: #000; }
-  .print-table .wave-timeline-bar { fill: #888; opacity: 1; }
   .print-table .tide-entry-print { display: inline-block; white-space: nowrap; }
   .print-table .tide-entry-print + .tide-entry-print { margin-left: 0.8em; }
   .print-table .tide-entry-height { font-size: 0.82em; }

@@ -522,6 +522,30 @@ boat-launch safety/comfort read even on the laminated sheet:
   print rules) to remove extra leading that was inflating their rendered
   height - verified the value text now sits fully inside its row's
   boundary and the 2-page print total is unaffected.
+- **Wave and Wind chop timeline rows switched from height bars to
+  direction-scaled arrows** (a further follow-up, once the row-height fix
+  above still left Wave/Wind chop's *bar* visually inconsistent with the
+  arrow-based Current/Swell rows, and their fixed `barMaxPx` bar height was
+  itself part of what made these two rows more prone to overflowing their
+  row box than the arrow-based rows). Both `wave_direction` and
+  `wind_wave_direction` turned out to already be available as hourly
+  Marine API fields (added to the `&hourly=` query string alongside the
+  existing `wave_height`/`wind_wave_height`, and to `hourlyWaveForDay()`'s
+  per-hour object as `waveDir`/`windWaveDir`), so - like the Swell row
+  already did with `swellDir` - `waveTimelineHtml()`/
+  `windWaveTimelineHtml()` were rewritten to plot `miniCurrentArrowSvg()`
+  (the same direction+magnitude-scaled arrow used by Current/Swell) instead
+  of `timelineBarSvg()`'s fixed-height vertical bar, which is now unused
+  and removed along with its `.wave-timeline-bar`/`-svg`/`-wrap` CSS. Wave's
+  arrow direction follows whichever of wave/swell height is taller that
+  hour (mirroring its existing "taller of the two" height logic). This
+  makes all four sea-state/current timeline rows (Current, Wind chop,
+  Wave, Swell) share one consistent visual language, adds previously-
+  unavailable-at-a-glance wind-chop/wave direction information, and
+  incidentally fixes the overflow risk entirely since arrow height is
+  capped by `miniCurrentArrowSvg()`'s own fixed-max geometry rather than a
+  per-row pixel scale that could, for certain height ranges, exceed the
+  row's box.
 - **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
   parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
   existing swell line using the Marine API's daily `wind_wave_height_max`/

@@ -365,8 +365,8 @@ async function fetchMarine(lat, lon, startIso, endIso, tz) {
     `&daily=wave_height_max,wave_direction_dominant,wave_period_max,swell_wave_height_max,` +
     `swell_wave_direction_dominant,swell_wave_period_max,wind_wave_height_max,` +
     `wind_wave_direction_dominant,wind_wave_period_max&hourly=sea_surface_temperature,` +
-    `ocean_current_velocity,ocean_current_direction,wave_height,swell_wave_height,` +
-    `swell_wave_direction,wind_wave_height` +
+    `ocean_current_velocity,ocean_current_direction,wave_height,wave_direction,swell_wave_height,` +
+    `swell_wave_direction,wind_wave_height,wind_wave_direction` +
     `&start_date=${s}&end_date=${e}&timezone=${encodeURIComponent(tz)}`;
   let res = await fetch(build(startIso, endIso));
   if (!res.ok) {
@@ -604,25 +604,32 @@ function dailyPressure(weatherHourly, isoDay) {
 
 // Picks out hourly wave/swell height for one calendar day, at every
 // `intervalHours` (mirrors hourlyWindForDay()/hourlyCurrentForDay()), for
-// the screen-only "Wave" timeline row that shows how sea state builds/eases
-// through the day. wind_wave_height is included too so the timeline can
-// (like the daily Waves/Swell row) distinguish locally wind-driven chop
-// from groundswell.
+// the "Wave"/"Swell"/"Wind chop" timeline rows that show how sea state
+// builds/eases through the day. Direction fields (wave_direction,
+// swell_wave_direction, wind_wave_direction) are included for all three so
+// each row can render a direction-scaled arrow (mirrors
+// hourlyCurrentForDay()'s dir+speed pairing) rather than a plain height bar.
 function hourlyWaveForDay(marineHourly, isoDay, intervalHours) {
   const step = intervalHours || 2;
   if (!marineHourly || !marineHourly.time) return [];
   const times = marineHourly.time;
   const waveH = marineHourly.wave_height;
+  const waveDir = marineHourly.wave_direction;
   const swellH = marineHourly.swell_wave_height;
   const swellDir = marineHourly.swell_wave_direction;
   const windWaveH = marineHourly.wind_wave_height;
+  const windWaveDir = marineHourly.wind_wave_direction;
   if (!waveH || !swellH) return [];
   const out = [];
   for (let i = 0; i < times.length; i++) {
     if (!times[i].startsWith(isoDay)) continue;
     const hour = parseInt(times[i].slice(11, 13), 10);
     if (hour % step !== 0) continue;
-    out.push({ hour, wave: waveH[i], swell: swellH[i], swellDir: swellDir ? swellDir[i] : null, windWave: windWaveH ? windWaveH[i] : null });
+    out.push({
+      hour, wave: waveH[i], waveDir: waveDir ? waveDir[i] : null,
+      swell: swellH[i], swellDir: swellDir ? swellDir[i] : null,
+      windWave: windWaveH ? windWaveH[i] : null, windWaveDir: windWaveDir ? windWaveDir[i] : null,
+    });
   }
   return out;
 }
@@ -677,7 +684,7 @@ async function cachedFetch(cacheKey, fetcher) {
 // well-shaped result to index into (all lookups already treat a missing
 // `wIdx`/`mIdx` as "no data for this day" and render "\u2014").
 const EMPTY_WEATHER = { daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], windspeed_10m_max: [], windspeed_10m_mean: [], windgusts_10m_max: [], winddirection_10m_dominant: [], sunrise: [], sunset: [], precipitation_sum: [], precipitation_probability_max: [], weathercode: [], uv_index_max: [] }, hourly: { time: [], windspeed_10m: [], winddirection_10m: [], pressure_msl: [] } };
-const EMPTY_MARINE = { daily: { time: [], wave_height_max: [], wave_direction_dominant: [], wave_period_max: [], swell_wave_height_max: [], swell_wave_direction_dominant: [], swell_wave_period_max: [], wind_wave_height_max: [], wind_wave_direction_dominant: [], wind_wave_period_max: [] }, hourly: { time: [], sea_surface_temperature: [], ocean_current_velocity: [], ocean_current_direction: [], wave_height: [], swell_wave_height: [], swell_wave_direction: [], wind_wave_height: [] } };
+const EMPTY_MARINE = { daily: { time: [], wave_height_max: [], wave_direction_dominant: [], wave_period_max: [], swell_wave_height_max: [], swell_wave_direction_dominant: [], swell_wave_period_max: [], wind_wave_height_max: [], wind_wave_direction_dominant: [], wind_wave_period_max: [] }, hourly: { time: [], sea_surface_temperature: [], ocean_current_velocity: [], ocean_current_direction: [], wave_height: [], wave_direction: [], swell_wave_height: [], swell_wave_direction: [], wind_wave_height: [], wind_wave_direction: [] } };
 
 async function buildPlan(settings) {
   const { lat, lon, start, key } = settings;
@@ -1765,28 +1772,12 @@ function currentTimelineHtml(d, intervalHours, isPrint) {
   return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
 }
 
-// Small vertical bar rendered as an inline SVG <rect> rather than a CSS
-// `background-color` div - unlike a CSS background, an SVG `fill` reliably
-// prints even when the browser's "print background graphics" option is
-// off (the common default), which matters since these timeline bars are
-// used in both the screen-only Wave/Swell rows and the printed Wind chop
-// row. `heightPx` is measured from the bottom of a fixed-height (barMaxPx) box.
-function timelineBarSvg(heightPx, barMaxPx) {
-  const w = 10;
-  const y = barMaxPx - heightPx;
-  return `<svg class="wave-timeline-bar-svg" width="${w}" height="${barMaxPx}" viewBox="0 0 ${w} ${barMaxPx}">` +
-    `<rect x="0" y="${y.toFixed(1)}" width="${w}" height="${heightPx.toFixed(1)}" class="wave-timeline-bar"></rect>` +
-    `</svg>`;
-}
-
-// Sea-state height colour scale (metres), shared by the screen-only
-// Wave/Swell timeline rows and the printed Wind chop row's value pill (bar
-// stays neutral/grey in print - see .print-table .wave-timeline-bar - only
-// the on-screen text value gets the colour treatment, same convention as
-// currentSpeedStyle()). Breakpoints follow the common surf-forecast
-// calm/small/moderate/rough/very-rough bands (~0.5m steps up to 2m, then
-// coarser), not an official standard, chosen to mirror the low->high
-// green->red ramp already used for wind/current speed.
+// Sea-state height colour scale (metres), shared by the Wave/Swell/Wind
+// chop timeline rows' arrow + value colouring. Breakpoints follow the
+// common surf-forecast calm/small/moderate/rough/very-rough bands (~0.5m
+// steps up to 2m, then coarser), not an official standard, chosen to
+// mirror the low->high green->red ramp already used for wind/current
+// speed.
 const WAVE_HEIGHT_SCALE = [
   { max: 0.5, color: "#0064ff" },   // calm - blue
   { max: 1.0, color: "#11d411" },   // small - green
@@ -1796,30 +1787,29 @@ const WAVE_HEIGHT_SCALE = [
   { max: Infinity, color: "#b40032" }, // heavy - deep red
 ];
 
-// Screen-only "Wave" timeline row: a small bar (wave/swell height, whichever
-// is greater that hour) per interval across the day, so building/easing sea
-// state is visible at a glance - same interval/positioning convention as
-// the Wind/Current timeline rows (mirrors hourlyWaveForDay()). Print omits
-// this row entirely (see ROW_DEFS `screenOnly` flag) to keep the laminated
-// sheet uncluttered - it's supplementary detail beyond the daily
-// Waves/Swell summary row, not a print essential.
+// "Wave" timeline row: a small direction-scaled arrow (mirrors
+// miniCurrentArrowSvg(), same convention as the Swell/Current rows) per
+// interval, using whichever of wave/swell height is greater that hour (and
+// that value's own direction) - same interval/positioning convention as
+// the Wind/Current timeline rows (mirrors hourlyWaveForDay()). Screen-only
+// by default, but user-togglable into print (see ROW_DEFS `printDefault`).
 function waveTimelineHtml(d, scale, intervalHours, isPrint) {
   if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
   const step = intervalHours || 2;
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => Math.max(h.wave || 0, h.swell || 0)));
-  const barMaxPx = 22;
   const valOf = (h) => h ? (h.wave != null ? h.wave : h.swell) : null;
+  const dirOf = (h) => h ? (h.wave != null ? h.waveDir : h.swellDir) : null;
   const bgStrips = timelineGradientBgStrips(hours, step, (h) => { const v = valOf(h); return v != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, v) : null; }, isPrint);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     const val = valOf(h);
-    const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
+    const dir = dirOf(h);
     const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>` +
+      miniCurrentArrowSvg(dir, val, maxH) +
       `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
@@ -1832,52 +1822,49 @@ function waveTimelineHtml(d, scale, intervalHours, isPrint) {
 // wave-or-swell-whichever-taller bar - lets building/backing-off
 // groundswell *and* its direction be tracked hour-by-hour, complementing
 // the daily Waves/Swell summary row. Screen-only by default, but the user
-// can opt into printing it too (see `printToggleKey` in ROW_DEFS).
+// can opt into printing it too (see `printDefault` in ROW_DEFS).
 function swellTimelineHtml(d, scale, intervalHours, isPrint) {
   if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
   const step = intervalHours || 2;
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => h.swell || 0));
-  const barMaxPx = 22;
   const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.swell != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, h.swell) : null, isPrint);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     const val = h.swell;
-    const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
     const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      (h.swellDir != null ? miniCurrentArrowSvg(h.swellDir, val, maxH) : `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>`) +
+      miniCurrentArrowSvg(h.swellDir, val, maxH) +
       `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
   return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
 }
 
-// "Wind chop" timeline row: hourly wind-wave height (the locally
-// wind-driven component of sea state, separate from swell - see
-// waveIconSvg()'s wind-wave detail line for the daily-max equivalent).
-// Unlike the Wave/Swell timeline rows above, this one *is* printed (at a
-// coarser 4h interval, matching the Wind/Current timeline rows' print
-// convention) since wind chop is a quick, useful read for boat-launch
-// safety/comfort even on the laminated sheet.
+// "Wind chop" timeline row: hourly wind-wave height + a small direction-
+// scaled arrow (the locally wind-driven component of sea state, separate
+// from swell - see waveIconSvg()'s wind-wave detail line for the
+// daily-max equivalent), same arrow convention as the Current/Swell/Wave
+// rows above. Unlike the Wave/Swell timeline rows, this one *is* printed
+// by default (at a coarser 4h interval, matching the Wind/Current
+// timeline rows' print convention) since wind chop is a quick, useful read
+// for boat-launch safety/comfort even on the laminated sheet.
 function windWaveTimelineHtml(d, intervalHours, isPrint, scale) {
   if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
   const step = intervalHours || 2;
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => h.windWave || 0));
-  const barMaxPx = 22;
   const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.windWave != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, h.windWave) : null, isPrint);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     const val = h.windWave;
-    const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
     const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>` +
+      miniCurrentArrowSvg(h.windWaveDir, val, maxH) +
       `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
