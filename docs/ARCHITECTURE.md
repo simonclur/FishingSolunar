@@ -474,6 +474,34 @@ boat-launch safety/comfort read even on the laminated sheet:
   the Wind chop row made three timeline rows total feel cramped) as the
   existing Wind/Current timeline rows, so all timeline rows line up on the
   same time-of-day grid.
+- **User-togglable print inclusion for Wave/Swell/Current timeline rows**
+  (a later follow-up) - `Current` was always printed and `Wave`/`Swell`
+  were always screen-only, but which of these is actually worth the
+  printed real estate turned out to be a personal/trip preference (e.g.
+  swell direction matters far more for a boat launch than for bank/rock
+  fishing), so a fixed default no longer suits everyone. `ROW_DEFS` gained
+  a `printToggleKey` per row (`currentTimeline`/`waveTimeline`/
+  `swellTimeline`); `buildTable()`'s screenOnly-skip logic became
+  `if (row.screenOnly && isPrint) { if (!row.printToggleKey ||
+  !printRowToggles?.[row.printToggleKey]) continue; }` - i.e. still hard-
+  skipped for rows with no toggle key (Pressure, UV, etc.), but consults a
+  `printRowToggles` object (persisted to `localStorage` under
+  `fishingSolunar.printRows`, default `{ currentTimeline: true,
+  waveTimeline: false, swellTimeline: false }` to preserve the pre-existing
+  layout) for the three that do have one. Three checkboxes in the settings
+  panel (`#printRowCurrentTimeline`/`#printRowWaveTimeline`/
+  `#printRowSwellTimeline`) read/write this via `loadPrintRowToggles()`/
+  `savePrintRowToggles()` and immediately call `render()` again on change
+  (no "Update" click needed) so the print preview reflects the choice
+  right away. `waveTimelineHtml()`/`swellTimelineHtml()` gained the same
+  `intervalHours`/`isPrint` parameters the other timeline rows already
+  had, so a toggled-on row correctly switches to the coarser 4h print
+  interval and disables on-screen-only text colouring, exactly like
+  `windWaveTimelineHtml()` already did. Since enabling any of these adds a
+  full extra row to every printed day, toggling all three on pushes the
+  print output past 2 pages (verified: 4 pages) - this is an accepted,
+  expected trade-off of the feature (the 2-page guarantee only applies to
+  the *default* toggle state), not a bug.
 - **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
   parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
   existing swell line using the Marine API's daily `wind_wave_height_max`/

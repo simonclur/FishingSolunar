@@ -12,7 +12,30 @@ const LS_KEYS = {
   key: "fishingSolunar.worldTidesKey",
   refHeight: "fishingSolunar.refTideHeight",
   rowLabelsCollapsed: "fishingSolunar.rowLabelsCollapsed",
+  printRows: "fishingSolunar.printRows",
 };
+
+// Which of the normally screen-only/always-on timeline rows the user wants
+// included on the printed/laminated sheet. Defaults preserve the
+// pre-existing printed layout (only Current (2h)/(4h) was ever printed) -
+// Wave and Swell were screen-only until this toggle existed. Exposed as
+// plain checkboxes in the settings panel rather than a fixed decision,
+// since which rows are worth the printed real estate is a personal/trip
+// preference (e.g. swell direction matters a lot for a boat launch, less
+// for a beach/rock fisher) and the user explicitly wanted to be able to
+// add then remove them again without a code change.
+const PRINT_ROW_TOGGLE_DEFAULTS = { currentTimeline: true, waveTimeline: false, swellTimeline: false };
+function loadPrintRowToggles() {
+  try {
+    const raw = localStorage.getItem(LS_KEYS.printRows);
+    return raw ? { ...PRINT_ROW_TOGGLE_DEFAULTS, ...JSON.parse(raw) } : { ...PRINT_ROW_TOGGLE_DEFAULTS };
+  } catch {
+    return { ...PRINT_ROW_TOGGLE_DEFAULTS };
+  }
+}
+function savePrintRowToggles(toggles) {
+  localStorage.setItem(LS_KEYS.printRows, JSON.stringify(toggles));
+}
 
 // Trip-planning "reference height" for the tide curve row: the user types
 // in a critical water depth (e.g. the depth needed to safely cross a
@@ -1774,19 +1797,20 @@ const WAVE_HEIGHT_SCALE = [
 // this row entirely (see ROW_DEFS `screenOnly` flag) to keep the laminated
 // sheet uncluttered - it's supplementary detail beyond the daily
 // Waves/Swell summary row, not a print essential.
-function waveTimelineHtml(d, scale) {
+function waveTimelineHtml(d, scale, intervalHours, isPrint) {
   if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
-  const hours = d.waveHourly;
+  const step = intervalHours || 2;
+  const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => Math.max(h.wave || 0, h.swell || 0)));
   const barMaxPx = 22;
   const valOf = (h) => h ? (h.wave != null ? h.wave : h.swell) : null;
-  const bgStrips = timelineGradientBgStrips(hours, 2, (h) => { const v = valOf(h); return v != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, v) : null; }, false);
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => { const v = valOf(h); return v != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, v) : null; }, isPrint);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     const val = valOf(h);
     const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
-    const textColor = val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
+    const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>` +
@@ -1796,24 +1820,26 @@ function waveTimelineHtml(d, scale) {
   return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
 }
 
-// Screen-only "Swell" timeline row: same layout/interval convention as the
-// Wave timeline above, but plots hourly swell height + a small travel-
+// "Swell" timeline row: same layout/interval convention as the Wave
+// timeline above, but plots hourly swell height + a small travel-
 // direction arrow (mirrors miniCurrentArrowSvg()) instead of the
 // wave-or-swell-whichever-taller bar - lets building/backing-off
 // groundswell *and* its direction be tracked hour-by-hour, complementing
-// the daily Waves/Swell summary row. Screen-only, print unaffected.
-function swellTimelineHtml(d, scale) {
+// the daily Waves/Swell summary row. Screen-only by default, but the user
+// can opt into printing it too (see `printToggleKey` in ROW_DEFS).
+function swellTimelineHtml(d, scale, intervalHours, isPrint) {
   if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
-  const hours = d.waveHourly;
+  const step = intervalHours || 2;
+  const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => h.swell || 0));
   const barMaxPx = 22;
-  const bgStrips = timelineGradientBgStrips(hours, 2, (h) => h && h.swell != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, h.swell) : null, false);
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.swell != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, h.swell) : null, isPrint);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     const val = h.swell;
     const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
-    const textColor = val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
+    const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       (h.swellDir != null ? miniCurrentArrowSvg(h.swellDir, val, maxH) : `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>`) +
@@ -1912,6 +1938,7 @@ const ROW_DEFS = [
   {
     key: "currentTimeline", label: "Current", cellClass: "wind-timeline-cell-wrap",
     labelSub: { screen: "(2h)", print: "(4h)" },
+    printToggleKey: "currentTimeline",
     render: (d, scales, isPrint) => currentTimelineHtml(d, isPrint ? 4 : 2, isPrint),
   },
   {
@@ -1925,13 +1952,15 @@ const ROW_DEFS = [
   },
   {
     key: "waveTimeline", label: "Wave", cellClass: "wind-timeline-cell-wrap", screenOnly: true,
-    labelSub: { screen: "(2h)" },
-    render: (d, scales) => waveTimelineHtml(d, scales?.waveTimelineScale),
+    labelSub: { screen: "(2h)", print: "(4h)" },
+    printToggleKey: "waveTimeline",
+    render: (d, scales, isPrint) => waveTimelineHtml(d, scales?.waveTimelineScale, isPrint ? 4 : 2, isPrint),
   },
   {
     key: "swellTimeline", label: "Swell", cellClass: "wind-timeline-cell-wrap", screenOnly: true,
-    labelSub: { screen: "(2h)" },
-    render: (d, scales) => swellTimelineHtml(d, scales?.waveTimelineScale),
+    labelSub: { screen: "(2h)", print: "(4h)" },
+    printToggleKey: "swellTimeline",
+    render: (d, scales, isPrint) => swellTimelineHtml(d, scales?.waveTimelineScale, isPrint ? 4 : 2, isPrint),
   },
   {
     key: "waveEnergy", label: "Wave energy",
@@ -1987,7 +2016,7 @@ const ROW_DEFS = [
   },
 ];
 
-function buildTable(days, className, scales) {
+function buildTable(days, className, scales, printRowToggles) {
   const isPrint = className.includes("print-table");
   const table = document.createElement("table");
   table.className = className;
@@ -2001,10 +2030,16 @@ function buildTable(days, className, scales) {
 
   const tbody = document.createElement("tbody");
   for (const row of ROW_DEFS) {
-    // Some rows (e.g. Pressure, Wave timeline) are screen-only extras that
+    // Some rows (e.g. Pressure, UV) are always screen-only extras that
     // don't need to take up space on the laminated print sheet - skip them
-    // entirely for print tables rather than rendering an empty/unwanted row.
-    if (row.screenOnly && isPrint) continue;
+    // entirely for print tables rather than rendering an empty/unwanted
+    // row. A separate subset (Wave/Swell timelines - see `printToggleKey`)
+    // is screen-only *by default* but user-togglable via the settings
+    // panel checkboxes, since whether they're worth the printed space is a
+    // personal/trip preference rather than a fixed decision.
+    if (row.screenOnly && isPrint) {
+      if (!row.printToggleKey || !printRowToggles?.[row.printToggleKey]) continue;
+    }
     const tr = document.createElement("tr");
     const cellClass = row.cellClass ? ` class="${row.cellClass}"` : "";
     const labelSuffix = row.labelSub ? ` <span class="row-label-sub">${isPrint ? row.labelSub.print : row.labelSub.screen}</span>` : "";
@@ -2046,13 +2081,14 @@ function render(days, settings, tideMeta) {
   $("locationTitle").textContent = settings.name;
   document.title = `${settings.name} \u2014 FishingSolunar`;
 
+  const printRowToggles = loadPrintRowToggles();
   const root = $("plannerRoot");
   root.innerHTML = "";
   const scales = { curveScale: tideMeta.curveScale, waveScale: tideMeta.waveScale, waveTimelineScale: tideMeta.waveTimelineScale, windWaveTimelineScale: tideMeta.windWaveTimelineScale };
   // --- interactive (screen) table ---
   const screenWrap = document.createElement("div");
   screenWrap.className = "table-scroll no-print";
-  screenWrap.appendChild(buildTable(days, "planner-table", scales));
+  screenWrap.appendChild(buildTable(days, "planner-table", scales, printRowToggles));
   root.appendChild(screenWrap);
   wireTideCurveHover(screenWrap);
   wireRefHeightInput();
@@ -2069,7 +2105,7 @@ function render(days, settings, tideMeta) {
     heading.className = "print-heading";
     heading.textContent = `${settings.name} \u2014 ${half[0].dayMonth} to ${half[half.length - 1].dayMonth}`;
     page.appendChild(heading);
-    page.appendChild(buildTable(half, "planner-table print-table", scales));
+    page.appendChild(buildTable(half, "planner-table print-table", scales, printRowToggles));
     printWrap.appendChild(page);
   }
   root.appendChild(printWrap);
@@ -2256,6 +2292,23 @@ function init() {
   $("lon").value = saved.lon;
   $("startDate").value = saved.start;
   $("worldTidesKey").value = saved.key;
+
+  // Print-row inclusion checkboxes (Current/Wave/Swell (2h) timelines):
+  // reflect the saved preference on open, and re-render immediately on
+  // change so the print-only tables (rebuilt on every render()) pick up
+  // the new choice without needing an "Update" click.
+  const printToggleCheckboxIds = { currentTimeline: "printRowCurrentTimeline", waveTimeline: "printRowWaveTimeline", swellTimeline: "printRowSwellTimeline" };
+  const savedPrintToggles = loadPrintRowToggles();
+  for (const [key, id] of Object.entries(printToggleCheckboxIds)) {
+    const el = $(id);
+    el.checked = !!savedPrintToggles[key];
+    el.addEventListener("change", () => {
+      const toggles = loadPrintRowToggles();
+      toggles[key] = el.checked;
+      savePrintRowToggles(toggles);
+      if (lastRenderArgs) render(lastRenderArgs.days, lastRenderArgs.settings, lastRenderArgs.tideMeta);
+    });
+  }
 
   $("settingsToggle").addEventListener("click", () => {
     $("settingsPanel").hidden = !$("settingsPanel").hidden;

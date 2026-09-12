@@ -50,6 +50,15 @@
     </div>
     <p id="tideSourceNote" class="hint tide-source-note"></p>
     <div class="field">
+      <label class="field-group-label">Include in print layout</label>
+      <span class="hint">These rows are always shown on screen; choose which also print on the laminated sheet.</span>
+      <div class="field-checkboxes">
+        <label class="checkbox-label"><input type="checkbox" id="printRowCurrentTimeline" /> Current (4h)</label>
+        <label class="checkbox-label"><input type="checkbox" id="printRowWaveTimeline" /> Wave (4h)</label>
+        <label class="checkbox-label"><input type="checkbox" id="printRowSwellTimeline" /> Swell (4h)</label>
+      </div>
+    </div>
+    <div class="field">
       <label for="worldTidesKey">WorldTides API key <span class="hint">(optional &mdash; not needed for Waddy Point or any location with a bundled local tide file; only used as a fallback for other locations/years. Free signup at worldtides.info)</span></label>
       <input id="worldTidesKey" type="password" autocomplete="off" placeholder="paste your key here" />
     </div>

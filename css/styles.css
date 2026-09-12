@@ -76,6 +76,10 @@ body {
 }
 .field-row { display: flex; gap: 0.75rem; }
 .field-row .field { flex: 1; }
+.field-group-label { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.1rem; }
+.field-checkboxes { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; margin-top: 0.3rem; }
+.checkbox-label { display: flex; align-items: center; gap: 0.35rem; font-weight: 400; font-size: 0.9rem; }
+.checkbox-label input { width: auto; }
 .actions { align-items: center; }
 .primary-btn, .secondary-btn {
   padding: 0.5rem 1rem;
