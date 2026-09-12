@@ -931,7 +931,11 @@ change).
   makes gustiness ("how much further the whisker reaches past the box")
   and the average-vs-max relationship ("where the white tick sits inside
   the box") both readable at a glance, including in black-and-white
-  print. Falls back to `windSpeed` for gust/avg if either isn't
+  print. A `minR` floor ensures the box/cap stays visible even at low
+  wind speed (the initial version scaled the box all the way down to
+  zero-height at low speed, making it invisible/indistinguishable from
+  "no box at all" - a real bug, not just a rendering quirk). Falls back
+  to `windSpeed` for gust/avg if either isn't
   supplied.
 
 ## Offline support

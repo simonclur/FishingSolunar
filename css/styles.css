@@ -394,6 +394,7 @@ table.planner-table {
 .wind-tick-label { font-size: 6.5px; fill: var(--line); font-weight: 700; }
 .wind-barb { stroke: none; }
 .wind-barb-max { fill: var(--ink); }
+.wind-barb-max-cap { stroke: var(--ink); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
 .wind-barb-gust { fill: none; stroke: var(--ink); stroke-width: 1.4; stroke-linecap: square; vector-effect: non-scaling-stroke; }
 .wind-barb-avg { stroke: #fff; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
 .wind-circle { fill: #fff; stroke: #fff; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
@@ -621,6 +622,7 @@ table.planner-table {
   .print-table .wind-ring { stroke: #555; fill: #fff; }
   .print-table .wind-tick-label { fill: #555; }
   .print-table .wind-barb-max { fill: #000; }
+  .print-table .wind-barb-max-cap { stroke: #000; }
   .print-table .wind-barb-gust { stroke: #000; }
   .print-table .wind-barb-avg { stroke: #fff; }
   .print-table .wind-circle { stroke: #fff; fill: #fff; }

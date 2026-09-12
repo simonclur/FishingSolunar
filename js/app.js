@@ -1601,6 +1601,9 @@ function windIconSvg(windDir, windSpeed, windAvg, windGust) {
   const cx = 20, cy = 20;
   const ringR = 15;
   const centerR = 7.5; // speed circle radius - marks start just outside this
+  const minR = centerR + 1.5; // smallest radius a mark can sit at, so a
+  // calm/zero speed still shows a visible sliver of box rather than
+  // vanishing into the centre circle's edge.
 
   // Gust and Avg default to windSpeed (max) if not supplied so the icon
   // still renders sensibly when only a single speed value is available.
@@ -1611,22 +1614,29 @@ function windIconSvg(windDir, windSpeed, windAvg, windGust) {
   // the tail (the compass bearing the wind is coming FROM), from the
   // centre circle's edge outward: distance-from-centre encodes speed, so
   // Avg/Max/Gust are visually separated by *how far out* they reach, not
-  // just by colour/width (which was hard to tell apart at this size).
-  //   - a filled black "box" spans the centre circle edge out to Max
-  //   - a thin whisker line continues from Max out to Gust, capped with
-  //     a short perpendicular tick (classic box-whisker "cap")
+  // just by colour/width (an earlier attempt using only width/shade was
+  // unreadable at this icon's small size). The full centreR..ringR gap
+  // is used for this (clamped to at least `minR` out) so the box is
+  // always clearly visible even at low/zero speed:
+  //   - a filled black "box" spans from `minR` out to Max, with a solid
+  //     cap line drawn right at its outer (Max) edge so the box has a
+  //     crisp visible top even when Gust ~= Max
+  //   - a thin whisker line continues from Max out to Gust (only drawn
+  //     when Gust is meaningfully greater than Max), capped with a short
+  //     perpendicular tick (classic box-whisker "cap")
   //   - Avg is a white tick mark drawn across the box, sitting wherever
   //     along the box its speed falls (nearer the centre = calmer avg
   //     relative to the day's max/gust spread)
-  const rScale = (speed) => centerR + Math.min(speed / maxSpeed, 1) * (ringR - centerR - 1);
+  const rScale = (speed) => Math.max(minR, centerR + Math.min(speed / maxSpeed, 1) * (ringR - centerR));
   const rMax = rScale(windSpeed);
   const rGust = rScale(gustSpeed);
-  const rAvg = rScale(avgSpeed);
+  const rAvg = Math.min(rScale(avgSpeed), rMax);
   const boxHalfW = 4.5;
-  const capHalfW = 2.5;
+  const capHalfW = 3;
 
-  const box = `<rect x="${-boxHalfW}" y="${-rMax}" width="${(boxHalfW * 2).toFixed(1)}" height="${(rMax - centerR).toFixed(1)}" class="wind-barb wind-barb-max"></rect>`;
-  const whisker = rGust > rMax
+  const box = `<rect x="${-boxHalfW}" y="${(-rMax).toFixed(1)}" width="${(boxHalfW * 2).toFixed(1)}" height="${(rMax - centerR).toFixed(1)}" class="wind-barb wind-barb-max"></rect>` +
+    `<line x1="${-capHalfW}" y1="${(-rMax).toFixed(1)}" x2="${capHalfW}" y2="${(-rMax).toFixed(1)}" class="wind-barb wind-barb-max-cap"></line>`;
+  const whisker = rGust > rMax + 0.5
     ? `<line x1="0" y1="${(-rMax).toFixed(1)}" x2="0" y2="${(-rGust).toFixed(1)}" class="wind-barb wind-barb-gust"></line>` +
       `<line x1="${-capHalfW}" y1="${(-rGust).toFixed(1)}" x2="${capHalfW}" y2="${(-rGust).toFixed(1)}" class="wind-barb wind-barb-gust"></line>`
     : "";
