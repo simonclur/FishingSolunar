@@ -242,6 +242,13 @@ table.planner-table {
 .tide-marker-label--high { color: #0b4f8a; }
 .tide-marker-label--low { color: #4a90c4; }
 .tide-night { fill: var(--ink); opacity: 0.06; }
+/* King-tide zone: a subtle red tint over the portion of each day's curve
+   that pokes above/below this station's own usual high/low range (top
+   25% of highs / bottom 25% of lows across the bundled-year CSV - see
+   getStationAnnualExtremes() in js/tides.js), clipped to the curve's own
+   filled area so it only shows where the tide actually reaches that
+   territory. */
+.tide-king-zone { fill: #c0392b; opacity: 0.32; pointer-events: none; }
 
 /* Reference tide height overlay: a dotted horizontal line at a
    user-chosen "critical depth" (entered via the input in the Tide curve
@@ -541,6 +548,7 @@ table.planner-table {
   .print-table .tide-ref-time--above { transform: translate(-50%, -50%) rotate(-90deg) translateX(3.8em); }
   .print-table .tide-ref-time--below { transform: translate(-50%, -50%) rotate(-90deg) translateX(-3.8em); }
   .print-table .tide-night { fill: #000; opacity: 0.08; }
+  .print-table .tide-king-zone { fill: #000; opacity: 0.28; }
   .print-table .wave-icon-cell { padding: 0.8mm 1mm; }
   .print-table .wave-icon-svg { height: 11mm; }
   .print-table .wave-bar { fill: #000; opacity: 0.15; }

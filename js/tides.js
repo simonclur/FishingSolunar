@@ -50,6 +50,42 @@ async function loadStationYear(stationId, year) {
   }
 }
 
+// Works out this station's "usual" extreme high/low tide levels - used to
+// flag likely "king tide" (unusually large) events on the tide curve,
+// independent of whatever 14-day window is currently on screen. Rather
+// than a fixed absolute threshold (which would need per-station tuning),
+// this uses the station's own predicted-tide *distribution*: the value
+// at the 75th percentile of all High-tide heights (i.e. "this station's
+// highest 25% of high tides") and the 25th percentile of all Low-tide
+// heights ("its lowest 25% of low tides"), computed across every
+// bundled calendar year for that station (currently just one year per
+// station - see data/tides/ - but this naturally improves as more years
+// get added without any code change). Returns null if no local CSV data
+// is available for this station at all (e.g. a custom/non-QLD location
+// with no bundled file - callers should fall back to a window-relative
+// estimate in that case, see buildPlan()'s fallback).
+function percentile(sortedArr, p) {
+  const idx = Math.min(sortedArr.length - 1, Math.max(0, Math.floor(sortedArr.length * p)));
+  return sortedArr[idx];
+}
+
+async function getStationAnnualExtremes(stationId, aroundYear) {
+  if (!stationId) return null;
+  const years = [aroundYear - 1, aroundYear, aroundYear + 1];
+  const results = await Promise.all(years.map((y) => loadStationYear(stationId, y)));
+  const events = results.filter(Boolean).flat();
+  if (!events.length) return null;
+  const highs = events.filter((e) => e.type === "High").map((e) => e.height).sort((a, b) => a - b);
+  const lows = events.filter((e) => e.type === "Low").map((e) => e.height).sort((a, b) => a - b);
+  if (!highs.length || !lows.length) return null;
+  return {
+    highThreshold: percentile(highs, 0.75),
+    lowThreshold: percentile(lows, 0.25),
+    sampleSize: highs.length + lows.length,
+    windowOnly: false,
+  };
+}
+
 /**
  * @param {string} stationId matches a data/tides/<stationId>-<year>.csv file
  * @param {Date} startDate
@@ -77,4 +113,4 @@ async function getLocalTides(stationId, startDate, endDate) {
   return { byDate, missingYears };
 }
 
-window.TideCalc = { getLocalTides, parseHiLoCsv };
+window.TideCalc = { getLocalTides, parseHiLoCsv, getStationAnnualExtremes, percentile };

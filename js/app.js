@@ -670,6 +670,19 @@ async function buildPlan(settings) {
   const weather = weatherResult.data;
   const marine = marineResult.data;
 
+  // "King tide" thresholds: this station's own usual highest-25%-of-highs
+  // and lowest-25%-of-lows levels, computed from the full bundled-year
+  // local tide CSV (see getStationAnnualExtremes() in js/tides.js) rather
+  // than from just the current 14-day window - so what counts as an
+  // unusually large tide is a stable, location-specific fact, not
+  // something that shifts depending on which two weeks happen to be on
+  // screen. Falls back to null (no local CSV station, e.g. a custom
+  // location relying purely on the WorldTides API) - callers fall back to
+  // a window-relative estimate in that case, see curveScale below.
+  const kingTideThresholds = preset?.tideStationId
+    ? await window.TideCalc.getStationAnnualExtremes(preset.tideStationId, startDate.getFullYear())
+    : null;
+
   const days = [];
   for (let i = 0; i < 14; i++) {
     const date = addDays(startDate, i);
@@ -747,6 +760,25 @@ async function buildPlan(settings) {
     const min = Math.min(...allHeights), max = Math.max(...allHeights);
     const pad = (max - min) * 0.08 || 0.1;
     curveScale = { min: min - pad, max: max + pad };
+  }
+
+  // Attach the king-tide thresholds to curveScale (rather than a separate
+  // object threaded through render()) since every place that already
+  // receives curveScale (tideCurveSvg(), tideCell()) is exactly where this
+  // is needed too. Falls back to a window-relative estimate (top/bottom
+  // 15% of *this* 14-day window's own range - the pre-existing behaviour)
+  // when no local-CSV station data is available at all.
+  if (curveScale) {
+    if (kingTideThresholds) {
+      curveScale.kingHigh = kingTideThresholds.highThreshold;
+      curveScale.kingLow = kingTideThresholds.lowThreshold;
+      curveScale.kingTideIsStationWide = true;
+    } else {
+      const span = curveScale.max - curveScale.min;
+      curveScale.kingHigh = curveScale.max - span * 0.15;
+      curveScale.kingLow = curveScale.min + span * 0.15;
+      curveScale.kingTideIsStationWide = false;
+    }
   }
 
   // Shared 0..max scale for the wave/swell bar icon, so a 3m day always
@@ -1032,8 +1064,8 @@ function tideCell(list, tz, sunrise, sunset, curveScale, kind, isPrint) {
     const isDaylight = sunrise && sunset && e.dt >= sunrise && e.dt <= sunset;
     const timeHtml = isDaylight ? `<strong>${fmtTime(e.dt, tz)}</strong>` : fmtTime(e.dt, tz);
     let heightClass = "";
-    if (curveScale && kind === "high" && e.height >= curveScale.max - (curveScale.max - curveScale.min) * 0.15) heightClass = "value-high";
-    if (curveScale && kind === "low" && e.height <= curveScale.min + (curveScale.max - curveScale.min) * 0.15) heightClass = "value-cold";
+    if (curveScale && kind === "high" && e.height >= curveScale.kingHigh) heightClass = "value-high";
+    if (curveScale && kind === "low" && e.height <= curveScale.kingLow) heightClass = "value-cold";
     const stagger = i % 2 === 0 ? "tide-entry--left" : "tide-entry--right";
     // Print packs both events for the day onto a single row (rather than
     // stacking each event on its own line as the screen view does), with
@@ -1086,10 +1118,51 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
   // solid black in print regardless. Each day needs its own gradient `id`
   // since all 14 SVGs share one DOM/document.
   const gradientId = `tideGrad-${d.iso}`;
+  const clipId = `tideClip-${d.iso}`;
   const gradientDefs = `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">` +
     `<stop offset="0" stop-color="#0b4f8a"></stop>` +
     `<stop offset="1" stop-color="#bcdcf2"></stop>` +
-    `</linearGradient></defs>`;
+    `</linearGradient>` +
+    `<clipPath id="${clipId}"><polygon points="${areaPoints}"></polygon></clipPath>` +
+    `</defs>`;
+
+  // "King tide" zone shading: a horizontal band marking the top/bottom of
+  // this station's usual tide range (see getStationAnnualExtremes() in
+  // js/tides.js - the station's own highest 25% of highs / lowest 25% of
+  // lows, from the full bundled-year CSV, not just this 14-day window),
+  // clipped to the curve's own filled area (via `clipId` above) so the
+  // shading only actually appears where this day's curve pokes up/down
+  // into that zone, rather than as a distracting full-width stripe
+  // regardless of whether today's tide even reaches it. Screen tints it a
+  // subtle red (`.tide-king-zone`), print instead uses a darker grey fill
+  // (see `.print-table .tide-king-zone`) since colour tinting doesn't
+  // reliably print in B&W. Skipped entirely if this station has no known
+  // threshold (e.g. a flat/degenerate curve).
+  let kingZoneSvg = "";
+  if (scale.kingHigh != null && scale.kingLow != null) {
+    const yKingHigh = yFor(scale.kingHigh);
+    const yKingLow = yFor(scale.kingLow);
+    let zones = "";
+    if (yKingHigh > 0) {
+      // High zone: the area fill already only exists above a given y where
+      // the curve actually reaches that high, so simply clipping a
+      // 0..yKingHigh rect to the curve's own fill area correctly restricts
+      // it to "where the curve pokes above the threshold".
+      zones += `<rect x="0" y="0" width="${w}" height="${yKingHigh.toFixed(1)}" class="tide-king-zone tide-king-zone--high"></rect>`;
+    }
+    if (yKingLow < h) {
+      // Low zone: the area fill always extends down to the bottom edge
+      // regardless of the curve's height at that x, so clipping a rect the
+      // same way as above would (wrongly) shade the full width. Instead
+      // build a dedicated polygon whose top edge is clamped to
+      // max(curveY, yKingLow) - this collapses to zero height wherever the
+      // curve stays above (i.e. shallower than) the threshold, and only
+      // gains area where the curve actually dips below it.
+      const lowCoords = points.map((p, i) => `${(i * stepX).toFixed(1)},${Math.max(yFor(p.h), yKingLow).toFixed(1)}`);
+      zones += `<polygon points="0,${h} ${lowCoords.join(" ")} ${w},${h}" class="tide-king-zone tide-king-zone--low"></polygon>`;
+    }
+    kingZoneSvg = `<g clip-path="url(#${clipId})">${zones}</g>`;
+  }
 
   // Night shading: darken the portion of the 24h width that falls before
   // sunrise and after sunset, so it's visible at a glance whether a given
@@ -1194,6 +1267,7 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
     gradientDefs +
     nightSvg +
     `<polygon points="${areaPoints}" class="tide-curve-fill" fill="url(#${gradientId})"></polygon>` +
+    kingZoneSvg +
     `<polyline points="${coords.join(" ")}" class="tide-curve-line"></polyline>` +
     `</svg>` +
     markerOverlay +

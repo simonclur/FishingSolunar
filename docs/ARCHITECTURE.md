@@ -613,6 +613,74 @@ scale itself is unchanged (no interpolation added there, per the earlier
 note above), but the *background rendering* is now the same shared
 gap-free, gradient-blended strip used by the other four timeline rows.
 
+### King-tide highlighting on the Tide curve
+
+The Tide curve row shades the portion of each day's curve that pokes into
+"unusually large tide" territory for that station - a subtle red tint on
+screen, a darker grey fill for print - so an approaching king tide (or an
+unusually shallow low, e.g. for reef-walking) is visible at a glance
+without reading every H/L label.
+
+**Why a station-based threshold, not a window-relative one.** The tide
+table already had an *unrelated*, pre-existing window-relative highlight:
+`tideCell()`'s `.value-high`/`.value-cold` classes on the High tide/Low
+tide text rows, driven by `curveScale.min`/`.max` (just the min/max of
+whatever 14-day window happens to be on screen). That's fine for
+"biggest tide in this fortnight" but says nothing about whether this
+fortnight is itself unusually big compared to the location's typical
+year - a mediocre 1.5m high could still be the biggest tide in a flat
+two-week window and get flagged, while a genuinely exceptional 1.9m king
+tide sitting in an otherwise-big spring-tide fortnight might not stand
+out at all. King-tide spotting needs an absolute, station-specific
+baseline, not a window-relative one.
+
+**How the threshold is computed** (`getStationAnnualExtremes()` in
+`js/tides.js`): for the preset's `tideStationId`, load the bundled CSV
+years `[year-1, year, year+1]` (whichever actually exist locally -
+currently every bundled QLD station only has 2026 data, so in practice
+this is just one year, improving automatically as more years get added),
+pool every High-tide height and every Low-tide height across those years,
+and take the 75th percentile of the highs / 25th percentile of the lows
+(`percentile()`, a small sorted-array helper). Percentiles (not a fixed
+absolute cm/m cutoff) are used so the same logic self-calibrates across
+stations with very different tidal ranges (e.g. Bundaberg vs. a
+low-range QLD reef site) without per-station magic numbers - consistent
+with the existing `WAVE_HEIGHT_SCALE`/`CURRENT_SPEED_SCALE` convention of
+deriving thresholds from data rather than hardcoding them. Returns
+`{ highThreshold, lowThreshold, sampleSize, windowOnly: false }`, or
+`null` if the station has no bundled CSV at all (e.g. a custom lat/lon
+with no `tideStationId` match in `LOCATION_PRESETS`).
+
+**Fallback for locations with no local CSV.** `buildPlan()` computes
+`kingTideThresholds` via `getStationAnnualExtremes()` when
+`preset?.tideStationId` exists, then attaches `kingHigh`/`kingLow` onto
+the shared `curveScale` object (the same object `tideCurveSvg()` and
+`tideCell()` already receive, so no new prop needed threading through
+`render()`). When there's no local station data, `kingHigh`/`kingLow`
+instead fall back to the top/bottom 15% of *this window's own* curveScale
+range (`windowOnly: true`, in effect reusing the pre-existing
+window-relative math) - a "best effort" indicator rather than nothing, on
+the assumption a rough highlight is better than silently disabling the
+feature for non-QLD/custom locations.
+
+**Rendering** (`tideCurveSvg()`): a `<clipPath>` referencing the day's own
+curve-fill polygon restricts the shading to only where the curve *actually
+reaches* that territory (not a distracting full-width band regardless of
+the day's real tide). The high zone is a simple rect clipped to the fill
+polygon (the fill already only exists above a given y where the curve
+reaches that high, so clipping is sufficient). The low zone needs a
+dedicated polygon whose top edge is `max(curveY, yKingLow)` per point,
+since the area-fill's bottom is a fixed baseline regardless of curve
+height - a naive rect-clip would incorrectly shade the full width. Both
+use the `.tide-king-zone`/`--high`/`--low` CSS classes: `#c0392b` red at
+`opacity:0.32` on screen, `#000` grey at `opacity:0.28` for print
+(consistent with the existing print convention of trading colour for
+opacity-based greyscale, e.g. `.tide-night`/`.tide-curve-fill`'s own print
+overrides). `tideCell()`'s existing `.value-high`/`.value-cold` classes on
+the High tide/Low tide text rows were also switched from the old
+window-relative 15%-band check to the same `curveScale.kingHigh`/`.kingLow`
+threshold, so the text and curve highlights now agree with each other.
+
 ### Reference tide height ("planning line")
 
 For trip planning (e.g. "I need at least 1.0m of water to safely cross this
