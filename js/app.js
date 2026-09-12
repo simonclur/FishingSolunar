@@ -963,7 +963,7 @@ function uvBadgeHtml(uv) {
   return `<span class="uv-badge" title="UV index: ${UV_SCALE[idx].label}" style="background-color:${UV_SCALE[idx].color};color:${textColor}">UV ${uv.toFixed(0)}</span>`;
 }
 
-function tideCell(list, tz, sunrise, sunset, curveScale, kind) {
+function tideCell(list, tz, sunrise, sunset, curveScale, kind, isPrint) {
   if (!list || !list.length) return "\u2014";
   return list.map((e, i) => {
     const isDaylight = sunrise && sunset && e.dt >= sunrise && e.dt <= sunset;
@@ -972,6 +972,14 @@ function tideCell(list, tz, sunrise, sunset, curveScale, kind) {
     if (curveScale && kind === "high" && e.height >= curveScale.max - (curveScale.max - curveScale.min) * 0.15) heightClass = "value-high";
     if (curveScale && kind === "low" && e.height <= curveScale.min + (curveScale.max - curveScale.min) * 0.15) heightClass = "value-cold";
     const stagger = i % 2 === 0 ? "tide-entry--left" : "tide-entry--right";
+    // Print packs both events for the day onto a single row (rather than
+    // stacking each event on its own line as the screen view does), with
+    // the height shown smaller in brackets right after the time - this is
+    // what let the High tide/Low tide rows each collapse to one printed
+    // row instead of two, trimming enough height to fit 2 full A4 pages.
+    if (isPrint) {
+      return `<span class="tide-entry-print ${stagger}">${timeHtml} <span class="muted tide-entry-height ${heightClass}">(${e.height.toFixed(2)}m)</span></span>`;
+    }
     return `<div class="tide-entry ${stagger}"><span class="tide-entry-time">${timeHtml}</span><span class="muted tide-entry-height ${heightClass}">${e.height.toFixed(2)}m</span></div>`;
   }).join("");
 }
@@ -1557,6 +1565,20 @@ function currentTimelineHtml(d, intervalHours, isPrint) {
   return `<div class="wind-timeline">${cells}</div>`;
 }
 
+// Small vertical bar rendered as an inline SVG <rect> rather than a CSS
+// `background-color` div - unlike a CSS background, an SVG `fill` reliably
+// prints even when the browser's "print background graphics" option is
+// off (the common default), which matters since these timeline bars are
+// used in both the screen-only Wave/Swell rows and the printed Wind chop
+// row. `heightPx` is measured from the bottom of a fixed-height (barMaxPx) box.
+function timelineBarSvg(heightPx, barMaxPx) {
+  const w = 10;
+  const y = barMaxPx - heightPx;
+  return `<svg class="wave-timeline-bar-svg" width="${w}" height="${barMaxPx}" viewBox="0 0 ${w} ${barMaxPx}">` +
+    `<rect x="0" y="${y.toFixed(1)}" width="${w}" height="${heightPx.toFixed(1)}" class="wave-timeline-bar"></rect>` +
+    `</svg>`;
+}
+
 // Screen-only "Wave" timeline row: a small bar (wave/swell height, whichever
 // is greater that hour) per interval across the day, so building/easing sea
 // state is visible at a glance - same interval/positioning convention as
@@ -1576,7 +1598,7 @@ function waveTimelineHtml(d) {
     const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      `<div class="wave-timeline-bar-wrap"><div class="wave-timeline-bar" style="height:${barH.toFixed(1)}px"></div></div>` +
+      `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>` +
       `<div class="wind-timeline-speed wave-timeline-value">${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
@@ -1601,7 +1623,7 @@ function swellTimelineHtml(d) {
     const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      (h.swellDir != null ? miniCurrentArrowSvg(h.swellDir, val) : `<div class="wave-timeline-bar-wrap"><div class="wave-timeline-bar" style="height:${barH.toFixed(1)}px"></div></div>`) +
+      (h.swellDir != null ? miniCurrentArrowSvg(h.swellDir, val) : `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>`) +
       `<div class="wind-timeline-speed wave-timeline-value">${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
@@ -1628,7 +1650,7 @@ function windWaveTimelineHtml(d, intervalHours) {
     const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      `<div class="wave-timeline-bar-wrap"><div class="wave-timeline-bar" style="height:${barH.toFixed(1)}px"></div></div>` +
+      `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>` +
       `<div class="wind-timeline-speed wave-timeline-value">${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
@@ -1681,8 +1703,8 @@ const ROW_DEFS = [
     key: "solunar", label: "Solunar", labelIcon: fishLabelIconSvg(),
     render: (d) => `<span class="stars" title="Approximate rating">${starString(d.solunar.rating)}</span>`,
   },
-  { key: "tideHigh", label: "High tide", render: (d, scales) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCell(d.tideHighs, d.tz, d.sunrise, d.sunset, scales?.curveScale, "high") },
-  { key: "tideLow", label: "Low tide", render: (d, scales) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCell(d.tideLows, d.tz, d.sunrise, d.sunset, scales?.curveScale, "low") },
+  { key: "tideHigh", label: "High tide", render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCell(d.tideHighs, d.tz, d.sunrise, d.sunset, scales?.curveScale, "high", isPrint) },
+  { key: "tideLow", label: "Low tide", render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCell(d.tideLows, d.tz, d.sunrise, d.sunset, scales?.curveScale, "low", isPrint) },
   {
     key: "tideCurve", label: "Tide curve", cellClass: "tide-curve-cell",
     labelIcon: () => `<span class="tide-ref-input-wrap no-print" title="Enter a critical tide height to plan a departure/return window">` +
@@ -1722,7 +1744,8 @@ const ROW_DEFS = [
       if (d.waveEnergy == null) return "\u2014";
       const band = waveEnergyBand(d.waveEnergy);
       const labels = { flat: "Flat", small: "Small", punchy: "Punchy", heavy: "Heavy", extreme: "Extreme" };
-      return `<span class="wave-energy-pill"${waveEnergyStyle(d.waveEnergy, isPrint)}>${Math.round(d.waveEnergy)} kJ</span><br><span class="muted">${labels[band] ?? ""}</span>`;
+      const sep = isPrint ? " \u00b7 " : "<br>";
+      return `<span class="wave-energy-pill"${waveEnergyStyle(d.waveEnergy, isPrint)}>${Math.round(d.waveEnergy)} kJ</span>${sep}<span class="muted">${labels[band] ?? ""}</span>`;
     },
   },
   { key: "seaTemp", label: "Sea temp", render: (d) => d.seaTemp == null ? "\u2014" : `${d.seaTemp.toFixed(1)}\u00B0C` },

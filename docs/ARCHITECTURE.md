@@ -470,6 +470,29 @@ boat-launch safety/comfort read even on the laminated sheet:
   `!isPrint`. Colour bands follow the standard WHO/EPA UV index scale
   (`UV_SCALE`: green/yellow/orange/red/violet).
 
+**Printing the timeline bars reliably**: the Wave/Swell/Wind-chop timeline
+bars are rendered as an inline SVG `<rect>` (`timelineBarSvg()`) rather than
+a plain `<div>` with a CSS `background-color` - a CSS background is
+commonly *not* printed unless the user has "print background graphics"
+enabled in their browser's print dialog (a non-default, easy-to-miss
+setting), whereas an SVG `fill` always prints. This was discovered when the
+first version of the printed Wind chop row's bars were invisible on the
+printed PDF despite looking fine on screen. `.print-table .wave-timeline-bar`
+forces the fill to solid black (opacity 1) for the laminated sheet.
+
+**Fitting the Wind chop row onto 2 pages**: adding a fourth printed
+timeline-style row (Wind chop, alongside Wind and Current) pushed the
+print table past a single A4-landscape page again. Rather than shrinking
+fonts further, three rows were compacted to single lines instead of two:
+High tide/Low tide (`tideCell()` gained an `isPrint` branch that renders
+both of a day's events inline on one row, e.g. `08:41 (1.68m)  20:49
+(1.82m)`, instead of stacking them as two flex rows like the screen view
+does) and Wave energy (`" \u00b7 "` separator instead of `<br>` when
+`isPrint`). The Day/Date header row was similarly forced onto one line in
+print via `.print-table thead th br { display: none; }`. Screen view is
+completely unaffected by all three changes (the `isPrint` branches only
+fire for the print table).
+
 All new rows reuse `ROW_SHORT_ICONS` entries for the collapsed-label view
 like every other row. Adding the printed Wind chop row was re-checked
 against the printed PDF page count (still exactly 2 pages/7-day half) per
