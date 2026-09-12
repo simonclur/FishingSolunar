@@ -903,6 +903,17 @@ the current `refTideHeight` (a static string would bake in the value from
 the first render only, and never update after a click or programmatic
 change).
 
+- **Wind (2h)/(4h) barb sized by wind speed** - `miniWindBarbSvg()`
+  (used by the "Wind (2h)"/"Wind (4h)" timeline row) previously drew a
+  fixed-ish barb triangle (only the tail width varied slightly with
+  speed); it now scales both length and width with speed exactly like
+  the Current/Wave/Swell timeline arrows do - `halfLen` 5..9.5 and
+  `tailW` 2.5..7.5 (both driven by `scale = speed / maxSpeedForScale`,
+  clamped to the day's own max like the other timelines) - so strong
+  wind hours show a longer, fatter barb and light wind hours show a
+  short, thin one at a glance, without needing to read the numeric
+  speed label underneath.
+
 
 ## Offline support
 

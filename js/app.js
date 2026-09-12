@@ -1644,18 +1644,24 @@ function windIconSvg(windDir, windSpeed) {
 // tapered triangle itself) for compact per-hour timeline use in the
 // "Wind (2h)" row. Kept visually consistent with the main wind icon's
 // meteorological convention: thick tail = direction wind is coming FROM,
-// tapering to a point = direction it's blowing TO.
+// tapering to a point = direction it's blowing TO. Scaled by speed the
+// same way the Current/Wave/Swell timeline arrows are: longer + fatter
+// for strong wind, shorter + thinner for light wind (relative to the
+// day's own max, like the other timelines, since `maxSpeedForScale` is
+// passed in per-day rather than a fixed global ceiling).
 function miniWindBarbSvg(windDir, windSpeed, maxSpeedForScale, outline) {
   if (windDir == null || windSpeed == null) return '<span class="muted">\u2014</span>';
   const fromDeg = windDir;
   const scale = Math.min(windSpeed / (maxSpeedForScale || 60), 1);
-  const cx = 11, cy = 11, r = 9;
-  const tailW = 3 + scale * 3; // 3..6
+  const cx = 11, cy = 11;
+  // halfLen (barb length from centre) 5..9.5, tailW (base width) 2.5..7.5.
+  const halfLen = 5 + scale * 4.5;
+  const tailW = 2.5 + scale * 5;
   const halfTail = tailW / 2;
-  const tailY = -(r - 0.5);
-  const tipY = r - 0.5;
+  const tailY = -halfLen;
+  const tipY = halfLen;
   const barbClass = outline ? "wind-barb-mini wind-barb-mini-outline" : "wind-barb-mini";
-  const barb = `<polygon points="${-halfTail.toFixed(1)},${tailY} ${halfTail.toFixed(1)},${tailY} 0,${tipY}" class="${barbClass}"></polygon>`;
+  const barb = `<polygon points="${-halfTail.toFixed(1)},${tailY.toFixed(1)} ${halfTail.toFixed(1)},${tailY.toFixed(1)} 0,${tipY.toFixed(1)}" class="${barbClass}"></polygon>`;
   return `<svg class="wind-barb-mini-svg" viewBox="0 0 22 22" role="img" aria-label="Wind at this time">` +
     `<g transform="translate(${cx},${cy}) rotate(${fromDeg})">${barb}</g>` +
     `</svg>`;
