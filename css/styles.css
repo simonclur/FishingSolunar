@@ -392,7 +392,10 @@ table.planner-table {
 .wind-icon-svg { width: 40px; height: 40px; display: block; margin: 0 auto 0.15rem; vertical-align: middle; overflow: visible; }
 .wind-ring { fill: #fff; stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .wind-tick-label { font-size: 6.5px; fill: var(--line); font-weight: 700; }
-.wind-barb { fill: var(--ink); stroke: none; }
+.wind-barb { stroke: none; }
+.wind-barb-gust { fill: none; stroke: var(--ink); stroke-width: 1; stroke-opacity: 0.55; }
+.wind-barb-max { fill: var(--ink); }
+.wind-barb-avg { fill: #9a9a9a; }
 .wind-circle { fill: #fff; stroke: #fff; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
 .wind-speed-label { font-size: 9.5px; fill: var(--ink); font-weight: 700; }
 .wind-cell { text-align: center; }
@@ -617,7 +620,9 @@ table.planner-table {
   .print-table .wind-icon-svg { width: 9mm; height: 9mm; }
   .print-table .wind-ring { stroke: #555; fill: #fff; }
   .print-table .wind-tick-label { fill: #555; }
-  .print-table .wind-barb { fill: #000; }
+  .print-table .wind-barb-gust { stroke: #555; }
+  .print-table .wind-barb-max { fill: #000; }
+  .print-table .wind-barb-avg { fill: #888; }
   .print-table .wind-circle { stroke: #fff; fill: #fff; }
   .print-table .wind-speed-label { fill: #000; }
   .print-table .wind-timeline-cell-wrap { padding: 0.5mm 0 !important; }

@@ -1594,15 +1594,39 @@ function waveIconSvg(d, waveScale, isPrint) {
 // the opposite edge showing where it's blowing *to* (meteorological
 // convention). The wind speed sits in a small circle at the centre, on top
 // of the barb, as the precise numeric readout.
-function windIconSvg(windDir, windSpeed) {
+function windIconSvg(windDir, windSpeed, windAvg, windGust) {
   if (windSpeed == null) return '<span class="muted">\u2014</span>';
   const fromDeg = windDir != null ? windDir : 0; // compass direction the wind comes FROM
   const maxSpeed = 60; // km/h, above which the barb maxes out visually
-  const scale = Math.min(windSpeed / maxSpeed, 1);
   const cx = 20, cy = 20;
   const ringR = 15;
-  const tailW = 6 + scale * 4; // 6..10, width of the barb's feathered tail
   const centerR = 7.5; // speed circle radius, also where the barb's point stops short
+  const tailY = -(ringR - 1); // tail at the ring edge, north before rotation
+  const tipY = ringR - 1; // tip at the opposite ring edge, south before rotation
+
+  // Tapered barb: a single wide-to-narrow triangle spanning the *whole*
+  // compass diameter - thick, flat tail at the ring edge on the side the
+  // wind is coming FROM, tapering to a sharp point at the opposite ring
+  // edge (where it's blowing TO).
+  const barbShape = (tailW, cls) => {
+    const halfTail = tailW / 2;
+    return `<polygon points="${-halfTail.toFixed(1)},${tailY} ${halfTail.toFixed(1)},${tailY} 0,${tipY}" class="${cls}"></polygon>`;
+  };
+
+  // Three overlaid barbs, same direction, widths scaled to their own
+  // speed (thicker = stronger): Gust (outline only, drawn first/behind),
+  // Max (solid black, drawn on top of gust), Avg (solid grey, drawn last
+  // so it's in the foreground, narrower/lighter to read as "typical").
+  // Gust and Avg default to windSpeed (max) if not supplied so the icon
+  // still renders sensibly when only a single speed value is available.
+  const gustSpeed = windGust ?? windSpeed;
+  const avgSpeed = windAvg ?? windSpeed;
+  const gustScale = Math.min(gustSpeed / maxSpeed, 1);
+  const maxScale = Math.min(windSpeed / maxSpeed, 1);
+  const avgScale = Math.min(avgSpeed / maxSpeed, 1);
+  const gustBarb = barbShape(6 + gustScale * 5, "wind-barb wind-barb-gust"); // 6..11, outline
+  const maxBarb = barbShape(5 + maxScale * 5, "wind-barb wind-barb-max"); // 5..10, solid black
+  const avgBarb = barbShape(3 + avgScale * 4, "wind-barb wind-barb-avg"); // 3..7, solid grey, narrowest
 
   // Compass ring + fixed (unrotated) cardinal tick marks/labels, giving an
   // absolute frame of reference independent of the wind direction itself.
@@ -1614,26 +1638,10 @@ function windIconSvg(windDir, windSpeed) {
     return `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" class="wind-tick-label">${label}</text>`;
   }).join("");
 
-  // Tapered barb: a single wide-to-narrow triangle spanning the *whole*
-  // compass diameter - thick, flat tail at the ring edge on the side the
-  // wind is coming FROM, tapering to a sharp point at the opposite ring
-  // edge (where it's blowing TO). The centre speed-circle is drawn on top
-  // afterwards, so it neatly covers the barb's midsection without needing
-  // to shorten the shape - only the tail (thick/flat, meteorological
-  // "wind is coming from here") and the tip (sharp point, "blowing to
-  // here") peek out past the circle, once rotated to the true compass
-  // bearing (`fromDeg`, using SVG's clockwise rotate() to match compass
-  // bearings directly).
-  const halfTail = tailW / 2;
-  const tailY = -(ringR - 1); // tail at the ring edge, north before rotation
-  const tipY = ringR - 1; // tip at the opposite ring edge, south before rotation
-  const barb =
-    `<polygon points="${-halfTail.toFixed(1)},${tailY} ${halfTail.toFixed(1)},${tailY} 0,${tipY}" class="wind-barb"></polygon>`;
-
   return `<svg class="wind-icon-svg" viewBox="0 0 40 40" role="img" aria-label="Wind direction and speed">` +
     `<circle cx="${cx}" cy="${cy}" r="${ringR}" class="wind-ring"></circle>` +
     ticks +
-    `<g transform="translate(${cx},${cy}) rotate(${fromDeg})">${barb}</g>` +
+    `<g transform="translate(${cx},${cy}) rotate(${fromDeg})">${gustBarb}${maxBarb}${avgBarb}</g>` +
     `<circle cx="${cx}" cy="${cy}" r="${centerR}" class="wind-circle"></circle>` +
     `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" class="wind-speed-label">${Math.round(windSpeed)}</text>` +
     `</svg>`;
@@ -2045,7 +2053,7 @@ const ROW_DEFS = [
       const stat = (label, val) => val == null ? "" :
         `<div class="wind-stat"><span class="wind-stat-label">${label}</span><span class="wind-stat-val" style="${isPrint ? "" : windSpeedStyle(val)}">${val.toFixed(0)}</span></div>`;
       return `<div class="wind-cell-row">` +
-        `${windIconSvg(d.windDir, d.windSpeed)}` +
+        `${windIconSvg(d.windDir, d.windSpeed, d.windAvg, d.windGust)}` +
         `<div class="wind-stats">${stat("Avg", d.windAvg)}${stat("Max", d.windSpeed)}${stat("Gust", d.windGust)}</div>` +
         `</div>` +
         `<div class="wind-speed-pill" style="${isPrint ? "" : windSpeedStyle(d.windSpeed)}">${degToCompass(d.windDir)} ${d.windSpeed.toFixed(0)} km/h</div>`;

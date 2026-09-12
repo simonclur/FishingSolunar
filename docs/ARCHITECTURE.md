@@ -914,6 +914,19 @@ change).
   short, thin one at a glance, without needing to read the numeric
   speed label underneath.
 
+- **Main Wind icon shows Avg/Max/Gust as a box-whisker-style barb** -
+  `windIconSvg()` now draws three overlaid tapered barbs on the same
+  compass bearing instead of one: a wide, outlined "Gust" barb behind
+  (`.wind-barb-gust`, unfilled/stroke-only so it doesn't compete for
+  ink), a solid black "Max" barb on top of that (`.wind-barb-max`,
+  matching the numeric label in the circle), and a narrower solid grey
+  "Avg" barb in the foreground (`.wind-barb-avg`, the lightest tone so it
+  reads as "typical", nested visually like a box-plot's median line
+  inside a box). Widths scale independently per stat (gust widest,
+  avg narrowest) so a quick glance at how much wider the barb flares
+  from centre-out shows how gusty conditions are, even before reading
+  the Avg/Max/Gust numbers next to it. Falls back to `windSpeed` for
+  gust/avg if either isn't supplied.
 
 ## Offline support
 
