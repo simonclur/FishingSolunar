@@ -310,6 +310,27 @@ function hourlyWindForDay(weatherHourly, isoDay, intervalHours) {
   return out;
 }
 
+// Same idea as hourlyWindForDay() but for ocean surface current, pulled
+// from the Marine API's hourly ocean_current_velocity/ocean_current_direction
+// (see fetchMarine()) so the "Current" timeline row can show how it shifts
+// through the day, mirroring the Wind timeline row's layout/behaviour.
+function hourlyCurrentForDay(marineHourly, isoDay, intervalHours) {
+  const step = intervalHours || 2;
+  if (!marineHourly || !marineHourly.time) return [];
+  const times = marineHourly.time;
+  const speeds = marineHourly.ocean_current_velocity;
+  const dirs = marineHourly.ocean_current_direction;
+  if (!speeds || !dirs) return [];
+  const out = [];
+  for (let i = 0; i < times.length; i++) {
+    if (!times[i].startsWith(isoDay)) continue;
+    const hour = parseInt(times[i].slice(11, 13), 10);
+    if (hour % step !== 0) continue;
+    out.push({ hour, dir: dirs[i], speed: speeds[i] });
+  }
+  return out;
+}
+
 async function fetchMarine(lat, lon, startIso, endIso, tz) {
   const build = (s, e) => `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}` +
     `&daily=wave_height_max,wave_direction_dominant,wave_period_max,swell_wave_height_max,` +
@@ -650,6 +671,7 @@ async function buildPlan(settings) {
       windAvg: wIdx >= 0 ? weather.daily.windspeed_10m_mean[wIdx] : null,
       windGust: wIdx >= 0 ? weather.daily.windgusts_10m_max[wIdx] : null,
       windHourly: hourlyWindForDay(weather.hourly, iso),
+      currentHourly: hourlyCurrentForDay(marine.hourly, iso),
       sunrise,
       sunset,
       rainMm: wIdx >= 0 ? weather.daily.precipitation_sum[wIdx] : null,
@@ -1239,27 +1261,7 @@ function waveIconSvg(d, waveScale) {
     `<text x="${waveX + barW / 2}" y="${valueY}" text-anchor="middle" class="wave-label">${d.waveHeight.toFixed(1)}m</text>` +
     `<text x="${swellX + barW / 2}" y="${h - 1}" text-anchor="middle" class="wave-label">${d.swellHeight != null ? d.swellHeight.toFixed(1) + "m" : "\u2014"}</text>` +
     `</svg>` +
-    `<div class="muted">${degToCompass(d.swellDir)} swell \u00B7 ${d.swellPeriod != null ? d.swellPeriod.toFixed(0) + "s period" : "\u2014"}</div>` +
-    currentLineHtml(d);
-}
-
-// Small inline arrow + label showing the ocean surface current's *travel*
-// direction (compass "flowing towards", i.e. direction + 180 from the
-// meteorological "coming from" convention the API returns - same
-// convention as the swell travel arrow above) and speed, shown as its own
-// line under the wave/swell row so it doesn't compete for space with the
-// two main bar icons. Sourced from Open-Meteo Marine's hourly
-// ocean_current_direction/ocean_current_velocity, averaged 6am-6pm local
-// (see dailyOceanCurrent()).
-function currentLineHtml(d) {
-  if (d.currentSpeed == null || d.currentDir == null) return "";
-  const travelDeg = (d.currentDir + 180) % 360;
-  const arrow = `<svg class="current-arrow-svg" viewBox="0 0 14 14" role="img" aria-label="Current direction">` +
-    `<g transform="translate(7,7) rotate(${travelDeg.toFixed(0)})">` +
-    `<line x1="0" y1="4.5" x2="0" y2="-4.5" class="current-arrow"></line>` +
-    `<polyline points="-3,-1.5 0,-4.5 3,-1.5" class="current-arrow"></polyline>` +
-    `</g></svg>`;
-  return `<div class="muted current-line">${arrow} ${degToCompass(d.currentDir)} current \u00B7 ${d.currentSpeed.toFixed(1)} km/h</div>`;
+    `<div class="muted">${degToCompass(d.swellDir)} swell \u00B7 ${d.swellPeriod != null ? d.swellPeriod.toFixed(0) + "s period" : "\u2014"}</div>`;
 }
 
 // Wind icon: a compass rose (fixed N/E/S/W ticks + ring, for absolute
@@ -1376,6 +1378,42 @@ function windTimelineHtml(d, intervalHours, isPrint) {
   return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
 }
 
+// Small arrow showing ocean current *travel* direction (unlike the wind
+// barb, which points where wind is blowing FROM/TO with a tail/tip shape -
+// current direction here is shown as a simple arrow pointing the direction
+// the water is flowing towards, consistent with the arrow used in
+// waveIconSvg() above).
+function miniCurrentArrowSvg(currentDir, currentSpeed) {
+  if (currentDir == null || currentSpeed == null) return '<span class="muted">\u2014</span>';
+  const travelDeg = (currentDir + 180) % 360;
+  return `<svg class="current-arrow-mini-svg" viewBox="0 0 22 22" role="img" aria-label="Current direction at this time">` +
+    `<g transform="translate(11,11) rotate(${travelDeg.toFixed(0)})">` +
+    `<line x1="0" y1="6" x2="0" y2="-6" class="current-arrow-mini"></line>` +
+    `<polyline points="-4,-2 0,-6 4,-2" class="current-arrow-mini"></polyline>` +
+    `</g></svg>`;
+}
+
+// Renders the "Current" timeline row: one mini arrow + speed per increment
+// across the day, laid out exactly like the Wind timeline row above (same
+// percentage-of-day positioning so the two timeline rows - and the Tide
+// curve's axis - all line up on the same time grid). Sourced from the
+// Marine API's hourly ocean current fields (see hourlyCurrentForDay()).
+function currentTimelineHtml(d, intervalHours, isPrint) {
+  if (!d.currentHourly || !d.currentHourly.length) return '<span class="muted">\u2014</span>';
+  const step = intervalHours || 2;
+  const hours = d.currentHourly.filter((h) => h.hour % step === 0);
+  const cells = hours.map((h) => {
+    const hh = String(h.hour).padStart(2, "0");
+    const leftPct = (h.hour / 24) * 100;
+    return `<div class="wind-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
+      `<div class="wind-timeline-hour">${hh}</div>` +
+      miniCurrentArrowSvg(h.dir, h.speed) +
+      `<div class="wind-timeline-speed">${h.speed != null ? h.speed.toFixed(1) : "\u2014"}</div>` +
+      `</div>`;
+  }).join("");
+  return `<div class="wind-timeline">${cells}</div>`;
+}
+
 // Small original fish silhouette shown next to the "Solunar" row label, to
 // make it immediately clear at a glance that this star rating is a
 // fishing-activity ("fishability") score rather than a generic moon-phase
@@ -1408,6 +1446,7 @@ const ROW_SHORT_ICONS = {
   rain: "\u{1F327}\u{FE0F}",
   wind: "\u{1F4A8}",
   windTimeline: "\u{1F4A8}",
+  currentTimeline: "\u{1F30A}\u{27A1}\u{FE0F}",
   sun: "\u{2600}\u{FE0F}",
   moon: "\u{1F319}",
 };
@@ -1472,12 +1511,17 @@ const ROW_DEFS = [
     render: (d, scales, isPrint) => windTimelineHtml(d, isPrint ? 4 : 2, isPrint),
   },
   {
+    key: "currentTimeline", label: "Current", cellClass: "wind-timeline-cell-wrap",
+    labelSub: { screen: "(2h)", print: "(4h)" },
+    render: (d, scales, isPrint) => currentTimelineHtml(d, isPrint ? 4 : 2, isPrint),
+  },
+  {
     key: "sun", label: "Sun",
     render: (d) => `&uarr; ${fmtTime(d.sunrise, d.tz)}<br>&darr; ${fmtTime(d.sunset, d.tz)}`,
   },
   {
     key: "moon", label: "Moon",
-    render: (d) => `<span class="moon-icon">${d.moon.icon}</span> ${d.moon.name}<br><span class="muted">${d.moon.illuminationPct}%</span>`,
+    render: (d) => `<span class="moon-icon">${d.moon.icon}</span> ${d.moon.name}`,
   },
 ];
 

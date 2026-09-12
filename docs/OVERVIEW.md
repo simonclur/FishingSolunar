@@ -17,11 +17,12 @@ in project chat), but adds a **Solunar rating**, is optimised for **print**
 | Solunar | 0–5 star rating, major/minor feed period times |
 | Tide | each high & low: time + height (m) |
 | Waves | swell direction, swell height (m), swell period (s), sig. wave height (m) |
+| Current | ocean surface current direction + speed (timeline row, 2h/4h resolution) |
 | Sea | sea surface temperature (°C) |
 | Weather | min/max air temp, wind direction + speed, sky condition |
 | Sun | sunrise, sunset |
 | Rain | rainfall (mm), chance of rain (%) |
-| Moon | phase name + icon (illumination %) |
+| Moon | phase name + icon |
 
 ## Layout modes
 
