@@ -546,6 +546,26 @@ boat-launch safety/comfort read even on the laminated sheet:
   capped by `miniCurrentArrowSvg()`'s own fixed-max geometry rather than a
   per-row pixel scale that could, for certain height ranges, exceed the
   row's box.
+- **Height bar restored behind Wave/Swell/Wind chop arrows** - once the
+  arrow conversion above shipped, the at-a-glance height comparison the
+  old bars gave was missed, so `miniHeightBarBg(val, maxH, isPrint)` was
+  added: a small bar (`.wave-timeline-barbg`/`-fill`), separate from and
+  positioned *behind* `miniCurrentArrowSvg()`'s `<svg>` inside a new
+  `.wave-timeline-arrow-wrap` container, filled to `val/maxH` percent
+  height. Deliberately a fixed-size element independent of the arrow (not
+  sized to match it) so it can never itself push the row past its print
+  height regardless of value - this is what the arrow conversion was
+  originally for. On screen the fill is colour-matched to the value via
+  `WAVE_HEIGHT_SCALE`; in print it's a flat light grey (`#bbb`) so it stays
+  visible in black-and-white. The arrow SVG needed `position: relative;
+  z-index: 1` added so it paints in front of the bar rather than being
+  covered by it (both are now stacked children of the same
+  position-relative wrapper).
+- **UV badge moved onto the Weather condition line** - previously
+  `uvBadgeHtml()` sat on its own `<br>`-separated line under the
+  weather-condition text; changed to render inline right after it
+  (space-separated, no `<br>`) to save vertical space, with `.uv-badge`'s
+  `margin-top` swapped for `margin-left` to suit its new inline position.
 - **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
   parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
   existing swell line using the Marine API's daily `wind_wave_height_max`/

@@ -1787,6 +1787,21 @@ const WAVE_HEIGHT_SCALE = [
   { max: Infinity, color: "#b40032" }, // heavy - deep red
 ];
 
+// Thin height-bar rendered *behind* a Wave/Swell/Wind chop arrow, scaled
+// 0..100% of that row's `maxH`, so the arrow's direction/magnitude styling
+// is kept but the eye can also compare relative heights at a glance the
+// way the old bar-only rows did - a light tint on screen (colour-matched
+// to the value via WAVE_HEIGHT_SCALE so it doesn't just read as generic
+// grey), and a flat light-grey bar in print (so it stays visible in
+// black-and-white without competing with the black arrow/text printed on
+// top of it).
+function miniHeightBarBg(val, maxH, isPrint) {
+  if (val == null || !maxH) return "";
+  const pct = Math.min(Math.max(val / maxH, 0), 1) * 100;
+  const fillColor = isPrint ? "#999" : interpolatedScaleColor(WAVE_HEIGHT_SCALE, val);
+  return `<div class="wave-timeline-barbg"><div class="wave-timeline-barbg-fill" style="height:${pct.toFixed(0)}%;background:${fillColor}"></div></div>`;
+}
+
 // "Wave" timeline row: a small direction-scaled arrow (mirrors
 // miniCurrentArrowSvg(), same convention as the Swell/Current rows) per
 // interval, using whichever of wave/swell height is greater that hour (and
@@ -1809,7 +1824,7 @@ function waveTimelineHtml(d, scale, intervalHours, isPrint) {
     const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      miniCurrentArrowSvg(dir, val, maxH) +
+      `<div class="wave-timeline-arrow-wrap">${miniHeightBarBg(val, maxH, isPrint)}${miniCurrentArrowSvg(dir, val, maxH)}</div>` +
       `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
@@ -1836,7 +1851,7 @@ function swellTimelineHtml(d, scale, intervalHours, isPrint) {
     const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      miniCurrentArrowSvg(h.swellDir, val, maxH) +
+      `<div class="wave-timeline-arrow-wrap">${miniHeightBarBg(val, maxH, isPrint)}${miniCurrentArrowSvg(h.swellDir, val, maxH)}</div>` +
       `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
@@ -1864,7 +1879,7 @@ function windWaveTimelineHtml(d, intervalHours, isPrint, scale) {
     const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      miniCurrentArrowSvg(h.windWaveDir, val, maxH) +
+      `<div class="wave-timeline-arrow-wrap">${miniHeightBarBg(val, maxH, isPrint)}${miniCurrentArrowSvg(h.windWaveDir, val, maxH)}</div>` +
       `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
@@ -1965,7 +1980,7 @@ const ROW_DEFS = [
   { key: "seaTemp", label: "Sea temp", render: (d) => d.seaTemp == null ? "\u2014" : `${d.seaTemp.toFixed(1)}\u00B0C` },
   {
     key: "weather", label: "Weather",
-    render: (d, scales, isPrint) => `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}${!isPrint && d.uvIndexMax != null ? `<br>${uvBadgeHtml(d.uvIndexMax)}` : ""}`,
+    render: (d, scales, isPrint) => `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}${!isPrint && d.uvIndexMax != null ? ` ${uvBadgeHtml(d.uvIndexMax)}` : ""}`,
   },
   {
     key: "pressure", label: "Pressure", printDefault: false,

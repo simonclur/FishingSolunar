@@ -397,7 +397,7 @@ table.planner-table {
 }
 .uv-badge {
   display: inline-block; padding: 0.05rem 0.4rem; border-radius: 0.7rem;
-  font-weight: 700; font-size: 0.7rem; margin-top: 0.1rem;
+  font-weight: 700; font-size: 0.7rem; margin-left: 0.35em;
 }
 .pressure-pill {
   display: inline-block; padding: 0.1rem 0.5rem; border-radius: 0.7rem;
@@ -430,15 +430,27 @@ table.planner-table {
 .wind-barb-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; }
 .wind-barb-mini { fill: var(--ink); stroke: none; }
 .wind-barb-mini-outline { stroke: #fff; stroke-width: 0.8; paint-order: stroke fill; }
-.current-arrow-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; }
+.current-arrow-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; position: relative; z-index: 1; }
 .current-arrow-mini { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 
 /* Wave/Swell/Wind chop timeline rows: use the same direction-scaled arrow
    as the Current row (miniCurrentArrowSvg()) rather than a height bar, so
    direction is visible too and the arrow height doesn't depend on a fixed
-   pixel scale that can overflow its row (unlike the old vertical bars). */
+   pixel scale that can overflow its row (unlike the old vertical bars).
+   A thin height-bar (miniHeightBarBg()) sits behind each arrow so the
+   at-a-glance height comparison the old bar-only rows gave isn't lost -
+   it's a separate, shorter/narrower element positioned behind the arrow
+   rather than sized to match it, so it can't itself push the row taller
+   even at 100% height. */
 .wave-timeline-cell .wind-timeline-hour { margin-bottom: 0.1rem; }
 .wave-timeline-value { font-size: 0.46rem; }
+.wave-timeline-arrow-wrap { position: relative; width: 20px; height: 20px; }
+.wave-timeline-barbg {
+  position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+  width: 10px; height: 16px; display: flex; align-items: flex-end;
+  background: rgba(0, 0, 0, 0.06); border-radius: 1px; overflow: hidden;
+}
+.wave-timeline-barbg-fill { width: 100%; }
 
 
 /* ---------- responsive: tablet / mobile ---------- */
@@ -582,6 +594,9 @@ table.planner-table {
   .print-table .wind-barb-mini { fill: #000; }
   .print-table .current-arrow-mini-svg { width: 4mm; height: 4mm; }
   .print-table .current-arrow-mini { stroke: #000; }
+  .print-table .wave-timeline-arrow-wrap { width: 4mm; height: 4mm; }
+  .print-table .wave-timeline-barbg { width: 2mm; height: 3.2mm; background: transparent; }
+  .print-table .wave-timeline-barbg-fill { background: #bbb !important; }
   .print-table .tide-entry-print { display: inline-block; white-space: nowrap; }
   .print-table .tide-entry-print + .tide-entry-print { margin-left: 0.8em; }
   .print-table .tide-entry-height { font-size: 0.82em; }
