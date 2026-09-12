@@ -1528,7 +1528,7 @@ const ROW_DEFS = [
     key: "rain", label: "Rain",
     render: (d) => {
       const icon = precipIconSvg(weatherPrecipCategory(d.weatherCode));
-      return `${icon ? `<span class="wx-icon-row">${icon}</span>` : ""}<span class="${rainChanceClass(d.rainChance)}">${d.rainMm != null ? d.rainMm.toFixed(1) : "0.0"}mm<br>${d.rainChance ?? 0}%</span>`;
+      return `${icon ? `<span class="wx-icon-row">${icon}</span>` : ""}<span class="${rainChanceClass(d.rainChance)}">${d.rainMm != null ? d.rainMm.toFixed(1) : "0.0"}mm (${d.rainChance ?? 0}%)</span>`;
     },
   },
   {
@@ -1551,7 +1551,7 @@ const ROW_DEFS = [
   },
   {
     key: "sun", label: "Sun",
-    render: (d) => `&uarr; ${fmtTime(d.sunrise, d.tz)}<br>&darr; ${fmtTime(d.sunset, d.tz)}`,
+    render: (d) => `&uarr; ${fmtTime(d.sunrise, d.tz)} &nbsp; &darr; ${fmtTime(d.sunset, d.tz)}`,
   },
   {
     key: "moon", label: "Moon",
