@@ -9,7 +9,10 @@ every API used must support CORS for browser `fetch()` calls.
 - No API key required. Free for non-commercial use. CORS-enabled.
 - Fields used (`daily=`): `temperature_2m_max`, `temperature_2m_min`,
   `windspeed_10m_max`, `winddirection_10m_dominant`, `sunrise`, `sunset`,
-  `precipitation_sum`, `precipitation_probability_max`, `weathercode`.
+  `precipitation_sum`, `precipitation_probability_max`, `weathercode`,
+  `uv_index_max`.
+- Also fetched hourly: `pressure_msl` (used for the screen-only Pressure
+  row, averaged 6am–6pm per day like sea temp/current below).
 - Covers a rolling window of roughly the last ~3 months up to ~16 days
   ahead of "today" (Open-Meteo enforces this server-side and rejects
   `start_date`/`end_date` outside it with a 400 error). A 14-day planner
@@ -24,7 +27,13 @@ every API used must support CORS for browser `fetch()` calls.
 - No API key required. CORS-enabled.
 - Fields used (`daily=`): `wave_height_max`, `wave_direction_dominant`,
   `wave_period_max`, `swell_wave_height_max`, `swell_wave_direction_dominant`,
-  `swell_wave_period_max`.
+  `swell_wave_period_max`, `wind_wave_height_max`,
+  `wind_wave_direction_dominant`, `wind_wave_period_max` (the last three
+  power a screen-only "wind chop" detail line, distinguishing locally
+  wind-driven chop from groundswell).
+- Also fetched hourly: `wave_height`, `swell_wave_height`,
+  `wind_wave_height` for a screen-only Wave (2h) timeline row, mirroring
+  the existing Wind/Current timeline rows.
 - Sea surface temperature is only available hourly (`hourly=sea_surface_temperature`);
   the app averages the daytime hours (6am–6pm) per day for a daily figure.
 - Ocean surface current (`hourly=ocean_current_velocity,ocean_current_direction`)

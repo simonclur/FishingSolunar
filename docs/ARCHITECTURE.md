@@ -419,6 +419,43 @@ so 12 rows (up from 11) still fit on a single A4-landscape page per
 future row addition should re-check the printed PDF page count the same
 way (see "Testing method" notes elsewhere in this doc).
 
+### Screen-only rows (Pressure, Wave timeline, wind-wave detail, UV)
+
+Four extra data points from `docs/DATA_CATALOG.md`'s "Part B" list were
+added as **screen-view only** features (never printed), so the laminated
+2-page A4 layout and page count are completely unaffected:
+
+- **`ROW_DEFS` `screenOnly: true` flag** - `buildTable()` does
+  `if (row.screenOnly && isPrint) continue;`, skipping the row's `<tr>`
+  entirely when building a print table. This is a stronger guarantee than a
+  CSS `display: none` override: the row never exists in the print DOM at
+  all, so it can't leak into print via a missed selector or affect the
+  printed page's row count/height.
+- **Pressure row** (`pressure`, `screenOnly: true`) - `dailyPressure()`
+  averages hourly `pressure_msl` (hPa) 6am-6pm local, same shape as
+  `dailySeaTemp()`/`dailyOceanCurrent()`. Colour-coded low->high via a new
+  `PRESSURE_SCALE`/`pressureStyle()` (same pattern as
+  `CURRENT_SPEED_SCALE`/`currentSpeedStyle()`), since falling/low pressure
+  is commonly associated with more fish activity.
+- **Wave (2h) timeline row** (`waveTimeline`, `screenOnly: true`) -
+  `hourlyWaveForDay()` extracts hourly `wave_height`/`swell_wave_height`/
+  `wind_wave_height` per day at a 2h interval; `waveTimelineHtml()` renders
+  it with the same `.wind-timeline`/`.wind-timeline-cell` classes (new
+  `.wave-timeline-bar` mini bar per interval) as the existing Wind/Current
+  timeline rows, so it lines up on the same time-of-day grid.
+- **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
+  parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
+  existing swell line using the Marine API's daily `wind_wave_height_max`/
+  `wind_wave_direction_dominant`/`wind_wave_period_max` (already
+  fetched for the Waves/Swell row), making the wind-chop-vs-groundswell
+  distinction data-driven instead of just illustrative.
+- **UV index badge** - the `weather` row itself still always renders (it's
+  printed), but its `render()` conditionally appends `uvBadgeHtml()` only
+  `!isPrint`. Colour bands follow the standard WHO UV index scale (`UV_SCALE`).
+
+All four reuse `ROW_SHORT_ICONS` entries for the collapsed-label view like
+every other row.
+
 ### Reference tide height ("planning line")
 
 For trip planning (e.g. "I need at least 1.0m of water to safely cross this

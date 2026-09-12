@@ -384,6 +384,14 @@ table.planner-table {
   display: inline-block; padding: 0.05rem 0.45rem; border-radius: 0.7rem;
   font-weight: 700;
 }
+.uv-badge {
+  display: inline-block; padding: 0.05rem 0.4rem; border-radius: 0.7rem;
+  font-weight: 700; font-size: 0.7rem; margin-top: 0.1rem;
+}
+.pressure-pill {
+  display: inline-block; padding: 0.1rem 0.5rem; border-radius: 0.7rem;
+  font-weight: 700;
+}
 
 /* Wind (2h)/(4h) timeline row: horizontal strip of mini barb icons,
    positioned by percentage-of-day (left: X%) rather than flex-wrap, so
@@ -414,6 +422,13 @@ table.planner-table {
 .current-arrow-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; }
 .current-arrow-mini { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 
+/* Screen-only Wave timeline row: a small vertical bar per interval,
+   height-scaled against that day's own hourly max (same "day-relative"
+   scaling as the mini wind barb, not the 14-day waveScale used by the
+   main Waves/Swell row icon). */
+.wave-timeline-cell .wind-timeline-hour { margin-bottom: 0.1rem; }
+.wave-timeline-bar-wrap { height: 22px; display: flex; align-items: flex-end; }
+.wave-timeline-bar { width: 10px; background: var(--accent); opacity: 0.65; border-radius: 1px 1px 0 0; }
 
 
 /* ---------- responsive: tablet / mobile ---------- */

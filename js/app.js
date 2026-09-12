@@ -264,8 +264,8 @@ function clipIso(iso, min, max) {
 async function fetchWeather(lat, lon, startIso, endIso, tz) {
   const build = (s, e) => `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&daily=temperature_2m_max,temperature_2m_min,windspeed_10m_max,windspeed_10m_mean,windgusts_10m_max,winddirection_10m_dominant,` +
-    `sunrise,sunset,precipitation_sum,precipitation_probability_max,weathercode` +
-    `&hourly=windspeed_10m,winddirection_10m` +
+    `sunrise,sunset,precipitation_sum,precipitation_probability_max,weathercode,uv_index_max` +
+    `&hourly=windspeed_10m,winddirection_10m,pressure_msl` +
     `&start_date=${s}&end_date=${e}&timezone=${encodeURIComponent(tz)}`;
   let res = await fetch(build(startIso, endIso));
   if (!res.ok) {
@@ -334,8 +334,9 @@ function hourlyCurrentForDay(marineHourly, isoDay, intervalHours) {
 async function fetchMarine(lat, lon, startIso, endIso, tz) {
   const build = (s, e) => `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}` +
     `&daily=wave_height_max,wave_direction_dominant,wave_period_max,swell_wave_height_max,` +
-    `swell_wave_direction_dominant,swell_wave_period_max&hourly=sea_surface_temperature,` +
-    `ocean_current_velocity,ocean_current_direction` +
+    `swell_wave_direction_dominant,swell_wave_period_max,wind_wave_height_max,` +
+    `wind_wave_direction_dominant,wind_wave_period_max&hourly=sea_surface_temperature,` +
+    `ocean_current_velocity,ocean_current_direction,wave_height,swell_wave_height,wind_wave_height` +
     `&start_date=${s}&end_date=${e}&timezone=${encodeURIComponent(tz)}`;
   let res = await fetch(build(startIso, endIso));
   if (!res.ok) {
@@ -543,6 +544,48 @@ function dailyOceanCurrent(marineHourly, isoDay) {
   return { speed: sumSpeed / n, dir };
 }
 
+// average pressure_msl over 6am-6pm local for each day - same "daytime
+// representative value" pattern as dailySeaTemp()/dailyOceanCurrent()
+// above. Screen-only Pressure row (see docs/DATA_CATALOG.md - high angler
+// interest, near-zero added fetch cost since it rides along with the
+// existing hourly weather request).
+function dailyPressure(weatherHourly, isoDay) {
+  const times = weatherHourly.time;
+  const pressures = weatherHourly.pressure_msl;
+  if (!pressures) return null;
+  let sum = 0, n = 0;
+  for (let i = 0; i < times.length; i++) {
+    if (!times[i].startsWith(isoDay)) continue;
+    const hour = parseInt(times[i].slice(11, 13), 10);
+    if (hour >= 6 && hour <= 18 && pressures[i] != null) { sum += pressures[i]; n++; }
+  }
+  return n ? sum / n : null;
+}
+
+// Picks out hourly wave/swell height for one calendar day, at every
+// `intervalHours` (mirrors hourlyWindForDay()/hourlyCurrentForDay()), for
+// the screen-only "Wave" timeline row that shows how sea state builds/eases
+// through the day. wind_wave_height is included too so the timeline can
+// (like the daily Waves/Swell row) distinguish locally wind-driven chop
+// from groundswell.
+function hourlyWaveForDay(marineHourly, isoDay, intervalHours) {
+  const step = intervalHours || 2;
+  if (!marineHourly || !marineHourly.time) return [];
+  const times = marineHourly.time;
+  const waveH = marineHourly.wave_height;
+  const swellH = marineHourly.swell_wave_height;
+  const windWaveH = marineHourly.wind_wave_height;
+  if (!waveH || !swellH) return [];
+  const out = [];
+  for (let i = 0; i < times.length; i++) {
+    if (!times[i].startsWith(isoDay)) continue;
+    const hour = parseInt(times[i].slice(11, 13), 10);
+    if (hour % step !== 0) continue;
+    out.push({ hour, wave: waveH[i], swell: swellH[i], windWave: windWaveH ? windWaveH[i] : null });
+  }
+  return out;
+}
+
 // ---------- offline-friendly caching ----------
 // Wraps a network fetch: on success, stashes the JSON response (with a
 // timestamp) in localStorage; on failure (offline, DNS, CORS, etc.) falls
@@ -592,8 +635,8 @@ async function cachedFetch(cacheKey, fetcher) {
 // instead of aborting the whole page. This gives buildPlan() an empty but
 // well-shaped result to index into (all lookups already treat a missing
 // `wIdx`/`mIdx` as "no data for this day" and render "\u2014").
-const EMPTY_WEATHER = { daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], windspeed_10m_max: [], windspeed_10m_mean: [], windgusts_10m_max: [], winddirection_10m_dominant: [], sunrise: [], sunset: [], precipitation_sum: [], precipitation_probability_max: [], weathercode: [] }, hourly: { time: [], windspeed_10m: [], winddirection_10m: [] } };
-const EMPTY_MARINE = { daily: { time: [], wave_height_max: [], wave_direction_dominant: [], wave_period_max: [], swell_wave_height_max: [], swell_wave_direction_dominant: [], swell_wave_period_max: [] }, hourly: { time: [], sea_surface_temperature: [], ocean_current_velocity: [], ocean_current_direction: [] } };
+const EMPTY_WEATHER = { daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], windspeed_10m_max: [], windspeed_10m_mean: [], windgusts_10m_max: [], winddirection_10m_dominant: [], sunrise: [], sunset: [], precipitation_sum: [], precipitation_probability_max: [], weathercode: [], uv_index_max: [] }, hourly: { time: [], windspeed_10m: [], winddirection_10m: [], pressure_msl: [] } };
+const EMPTY_MARINE = { daily: { time: [], wave_height_max: [], wave_direction_dominant: [], wave_period_max: [], swell_wave_height_max: [], swell_wave_direction_dominant: [], swell_wave_period_max: [], wind_wave_height_max: [], wind_wave_direction_dominant: [], wind_wave_period_max: [] }, hourly: { time: [], sea_surface_temperature: [], ocean_current_velocity: [], ocean_current_direction: [], wave_height: [], swell_wave_height: [], wind_wave_height: [] } };
 
 async function buildPlan(settings) {
   const { lat, lon, start, key } = settings;
@@ -656,6 +699,10 @@ async function buildPlan(settings) {
       swellHeight: mIdx >= 0 ? marine.daily.swell_wave_height_max[mIdx] : null,
       swellDir: mIdx >= 0 ? marine.daily.swell_wave_direction_dominant[mIdx] : null,
       swellPeriod: mIdx >= 0 ? marine.daily.swell_wave_period_max[mIdx] : null,
+      windWaveHeight: mIdx >= 0 ? marine.daily.wind_wave_height_max[mIdx] : null,
+      windWaveDir: mIdx >= 0 ? marine.daily.wind_wave_direction_dominant[mIdx] : null,
+      windWavePeriod: mIdx >= 0 ? marine.daily.wind_wave_period_max[mIdx] : null,
+      waveHourly: hourlyWaveForDay(marine.hourly, iso),
       waveEnergy: waveEnergyKJ(
         mIdx >= 0 ? marine.daily.swell_wave_height_max[mIdx] : null,
         mIdx >= 0 ? marine.daily.swell_wave_period_max[mIdx] : null,
@@ -663,6 +710,8 @@ async function buildPlan(settings) {
       seaTemp: dailySeaTemp(marine.hourly, iso),
       currentSpeed: oceanCurrent.speed,
       currentDir: oceanCurrent.dir,
+      pressure: dailyPressure(weather.hourly, iso),
+      uvIndexMax: wIdx >= 0 ? weather.daily.uv_index_max[wIdx] : null,
       tempMin: wIdx >= 0 ? weather.daily.temperature_2m_min[wIdx] : null,
       tempMax: wIdx >= 0 ? weather.daily.temperature_2m_max[wIdx] : null,
       weatherCode: wIdx >= 0 ? weather.daily.weathercode[wIdx] : null,
@@ -854,6 +903,63 @@ function currentSpeedStyle(speedKmh, isPrint) {
   const idx = currentSpeedStageIndex(speedKmh);
   const textColor = CURRENT_SPEED_WHITE_TEXT_MAX_INDEX.has(idx) ? "#fff" : "#111";
   return ` style="background-color:${CURRENT_SPEED_SCALE[idx].color};color:${textColor}"`;
+}
+
+// Barometric pressure (hPa) colour scale - screen-only Pressure row.
+// Anglers commonly treat falling/low pressure as favourable for fish
+// activity and high/stable pressure as neutral, so this is coloured as a
+// simple low->high band (not a literal "good/bad" claim - shown so a quick
+// day-to-day pressure comparison is visible at a glance) rather than
+// reusing the wind/current speed ramps, since pressure is a much narrower,
+// slower-moving value (typically 990-1030hPa) than either.
+const PRESSURE_SCALE = [
+  { max: 1005, color: "#0064ff" },  // low pressure - blue
+  { max: 1013, color: "#00c7ff" },  // below-average - light blue
+  { max: 1018, color: "#b8ff61" },  // average - light green
+  { max: 1023, color: "#fffe00" },  // above-average - yellow
+  { max: Infinity, color: "#ff9600" }, // high pressure - orange
+];
+const PRESSURE_WHITE_TEXT_MAX_INDEX = new Set([0, 1]);
+
+function pressureStageIndex(hpa) {
+  for (let i = 0; i < PRESSURE_SCALE.length; i++) {
+    if (hpa < PRESSURE_SCALE[i].max) return i;
+  }
+  return PRESSURE_SCALE.length - 1;
+}
+
+function pressureStyle(hpa) {
+  if (hpa == null) return "";
+  const idx = pressureStageIndex(hpa);
+  const textColor = PRESSURE_WHITE_TEXT_MAX_INDEX.has(idx) ? "#fff" : "#111";
+  return ` style="background-color:${PRESSURE_SCALE[idx].color};color:${textColor}"`;
+}
+
+// UV index colour scale - standard WHO UV index bands (Low/Moderate/
+// High/Very High/Extreme), reused as-is since this one *is* an official
+// international standard (unlike wind/current/pressure above, which are
+// this app's own choices).
+const UV_SCALE = [
+  { max: 3, color: "#00e600", label: "Low" },
+  { max: 6, color: "#fffe00", label: "Moderate" },
+  { max: 8, color: "#ff9600", label: "High" },
+  { max: 11, color: "#e66400", label: "Very High" },
+  { max: Infinity, color: "#b40032", label: "Extreme" },
+];
+const UV_WHITE_TEXT_MAX_INDEX = new Set([3, 4]);
+
+function uvStageIndex(uv) {
+  for (let i = 0; i < UV_SCALE.length; i++) {
+    if (uv < UV_SCALE[i].max) return i;
+  }
+  return UV_SCALE.length - 1;
+}
+
+function uvBadgeHtml(uv) {
+  if (uv == null) return "";
+  const idx = uvStageIndex(uv);
+  const textColor = UV_WHITE_TEXT_MAX_INDEX.has(idx) ? "#fff" : "#111";
+  return `<span class="uv-badge" title="UV index: ${UV_SCALE[idx].label}" style="background-color:${UV_SCALE[idx].color};color:${textColor}">UV ${uv.toFixed(0)}</span>`;
 }
 
 function tideCell(list, tz, sunrise, sunset, curveScale, kind) {
@@ -1212,7 +1318,7 @@ function waveEnergyStyle(kj, isPrint) {
 // bottom - so icon size grows/shrinks with the bar itself and the label
 // always sits directly above its value. The swell-direction arrow sits
 // between the two bars (with period printed underneath).
-function waveIconSvg(d, waveScale) {
+function waveIconSvg(d, waveScale, isPrint) {
   if (d.waveHeight == null || !waveScale) return '<span class="muted">\u2014</span>';
   const w = 150, h = 46, padY = 3, padX = 10, barW = 32;
   const max = waveScale.max || 1;
@@ -1295,7 +1401,9 @@ function waveIconSvg(d, waveScale) {
     `<text x="${waveX + barW / 2}" y="${valueY}" text-anchor="middle" class="wave-label">${d.waveHeight.toFixed(1)}m</text>` +
     `<text x="${swellX + barW / 2}" y="${h - 1}" text-anchor="middle" class="wave-label">${d.swellHeight != null ? d.swellHeight.toFixed(1) + "m" : "\u2014"}</text>` +
     `</svg>` +
-    `<div class="muted">${degToCompass(d.swellDir)} swell \u00B7 ${d.swellPeriod != null ? d.swellPeriod.toFixed(0) + "s period" : "\u2014"}</div>`;
+    `<div class="muted">${degToCompass(d.swellDir)} swell \u00B7 ${d.swellPeriod != null ? d.swellPeriod.toFixed(0) + "s period" : "\u2014"}</div>` +
+    (isPrint || d.windWaveHeight == null ? "" :
+      `<div class="muted wind-wave-detail">${degToCompass(d.windWaveDir)} wind chop \u00B7 ${d.windWaveHeight.toFixed(1)}m${d.windWavePeriod != null ? " \u00B7 " + d.windWavePeriod.toFixed(0) + "s" : ""}</div>`);
 }
 
 // Wind icon: a compass rose (fixed N/E/S/W ticks + ring, for absolute
@@ -1448,6 +1556,32 @@ function currentTimelineHtml(d, intervalHours, isPrint) {
   return `<div class="wind-timeline">${cells}</div>`;
 }
 
+// Screen-only "Wave" timeline row: a small bar (wave/swell height, whichever
+// is greater that hour) per interval across the day, so building/easing sea
+// state is visible at a glance - same interval/positioning convention as
+// the Wind/Current timeline rows (mirrors hourlyWaveForDay()). Print omits
+// this row entirely (see ROW_DEFS `screenOnly` flag) to keep the laminated
+// sheet uncluttered - it's supplementary detail beyond the daily
+// Waves/Swell summary row, not a print essential.
+function waveTimelineHtml(d) {
+  if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
+  const hours = d.waveHourly;
+  const maxH = Math.max(0.3, ...hours.map((h) => Math.max(h.wave || 0, h.swell || 0)));
+  const barMaxPx = 22;
+  const cells = hours.map((h) => {
+    const hh = String(h.hour).padStart(2, "0");
+    const leftPct = (h.hour / 24) * 100;
+    const val = h.wave != null ? h.wave : h.swell;
+    const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
+    return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
+      `<div class="wind-timeline-hour">${hh}</div>` +
+      `<div class="wave-timeline-bar-wrap"><div class="wave-timeline-bar" style="height:${barH.toFixed(1)}px"></div></div>` +
+      `<div class="wind-timeline-speed">${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `</div>`;
+  }).join("");
+  return `<div class="wind-timeline">${cells}</div>`;
+}
+
 // Small original fish silhouette shown next to the "Solunar" row label, to
 // make it immediately clear at a glance that this star rating is a
 // fishing-activity ("fishability") score rather than a generic moon-phase
@@ -1474,9 +1608,11 @@ const ROW_SHORT_ICONS = {
   tideLow: "\u{2B07}\u{FE0F}\u{1F30A}", // down arrow + wave
   tideCurve: "\u{1F30A}\u{1F4C8}", // wave + chart
   waves: "\u{1F30A}",
+  waveTimeline: "\u{1F30A}",
   waveEnergy: "\u{26A1}",
   seaTemp: "\u{1F30A}\u{1F321}\u{FE0F}",
   weather: "\u{26C5}",
+  pressure: "\u{1F321}\u{FE0F}\u{1F4CA}",
   rain: "\u{1F327}\u{FE0F}",
   wind: "\u{1F4A8}",
   windTimeline: "\u{1F4A8}",
@@ -1508,7 +1644,12 @@ const ROW_DEFS = [
   },
   {
     key: "waves", label: "Waves / Swell", cellClass: "wave-icon-cell",
-    render: (d, scales) => waveIconSvg(d, scales?.waveScale),
+    render: (d, scales, isPrint) => waveIconSvg(d, scales?.waveScale, isPrint),
+  },
+  {
+    key: "waveTimeline", label: "Wave", cellClass: "wind-timeline-cell-wrap", screenOnly: true,
+    labelSub: { screen: "(2h)" },
+    render: (d) => waveTimelineHtml(d),
   },
   {
     key: "waveEnergy", label: "Wave energy",
@@ -1522,7 +1663,11 @@ const ROW_DEFS = [
   { key: "seaTemp", label: "Sea temp", render: (d) => d.seaTemp == null ? "\u2014" : `${d.seaTemp.toFixed(1)}\u00B0C` },
   {
     key: "weather", label: "Weather",
-    render: (d, scales, isPrint) => `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}`,
+    render: (d, scales, isPrint) => `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}${!isPrint && d.uvIndexMax != null ? `<br>${uvBadgeHtml(d.uvIndexMax)}` : ""}`,
+  },
+  {
+    key: "pressure", label: "Pressure", screenOnly: true,
+    render: (d) => d.pressure == null ? "\u2014" : `<span class="pressure-pill"${pressureStyle(d.pressure)}>${Math.round(d.pressure)} hPa</span>`,
   },
   {
     key: "rain", label: "Rain",
@@ -1573,6 +1718,10 @@ function buildTable(days, className, scales) {
 
   const tbody = document.createElement("tbody");
   for (const row of ROW_DEFS) {
+    // Some rows (e.g. Pressure, Wave timeline) are screen-only extras that
+    // don't need to take up space on the laminated print sheet - skip them
+    // entirely for print tables rather than rendering an empty/unwanted row.
+    if (row.screenOnly && isPrint) continue;
     const tr = document.createElement("tr");
     const cellClass = row.cellClass ? ` class="${row.cellClass}"` : "";
     const labelSuffix = row.labelSub ? ` <span class="row-label-sub">${isPrint ? row.labelSub.print : row.labelSub.screen}</span>` : "";

@@ -25,6 +25,8 @@ behaviour, graceful degradation).
 | `sunrise` / `sunset` | Sun row; also feeds Solunar major/minor period calc and daylight-bolding of tide times |
 | `precipitation_sum`, `precipitation_probability_max` | Rain row: mm (chance%) |
 | hourly `windspeed_10m` / `winddirection_10m` | Wind timeline row (2h/4h mini barb + speed) |
+| `uv_index_max` (daily) | Weather row: **screen-only** UV badge, colour-coded to the standard WHO UV bands |
+| hourly `pressure_msl` | **Screen-only** Pressure row: 6am–6pm daily average, colour-coded low→high |
 
 ### 2. Open-Meteo Marine API (waves / swell / sea temp / current)
 
@@ -39,6 +41,8 @@ values have been observed to go blank after ~9–10 days ahead in practice.
 | hourly `sea_surface_temperature` | Sea temp row (6am–6pm daily average) |
 | hourly `ocean_current_velocity`, `ocean_current_direction` | Current timeline row (2h/4h speed pill + direction arrow) |
 | `wave_direction_dominant`, `wave_period_max` | Fetched but not currently shown separately from swell |
+| `wind_wave_height_max`, `wind_wave_direction_dominant`, `wind_wave_period_max` (daily) | **Screen-only**: extra "wind chop" detail line under the Waves/Swell icon, shown alongside the swell line so the wind-driven vs. swell components are distinguishable |
+| hourly `wave_height`, `swell_wave_height`, `wind_wave_height` | **Screen-only** Wave (2h) timeline row, mirroring the Wind/Current timeline rows |
 
 ### 3. WorldTides API (fallback tide source)
 
@@ -64,9 +68,7 @@ we already make (or, for WorldTides, flags we already have a key for).
 
 | Field | What it is | Why it could be interesting for fishing |
 |---|---|---|
-| `pressure_msl` / `surface_pressure` (hourly, hPa) | Barometric pressure | Widely believed by anglers to affect fish feeding activity (falling pressure often = better bite); a pressure trend arrow could be a nice addition near Solunar |
 | `cloud_cover` (hourly, %) | Total cloud cover | Overcast/bright conditions affect surface-feeding fish behaviour; could refine the Weather icon beyond the daily WMO code |
-| `uv_index_max` (daily) / `uv_index` (hourly) | UV index | Sun-safety planning for a full day on the water |
 | `visibility` (hourly, m) | Horizontal visibility | Relevant for boating safety (fog/haze) |
 | `relative_humidity_2m` (hourly, %) | Humidity | Minor comfort factor; some anglers correlate humidity swings with bite windows (less scientifically robust than pressure) |
 | `dew_point_2m` (hourly, °C) | Dew point | Early-morning fog risk indicator (paired with humidity/temp) |
@@ -78,8 +80,6 @@ we already make (or, for WorldTides, flags we already have a key for).
 
 | Field | What it is | Why it could be interesting for fishing |
 |---|---|---|
-| `wind_wave_height` / `wind_wave_period` / `wind_wave_direction` (hourly) | The **locally wind-driven** component of the sea state, separate from swell | Distinguishing "wind chop" from "groundswell" is exactly the wave-vs-swell distinction the app's icon already visually implies — this would make it data-driven rather than illustrative. A choppy-but-low-swell day reads very differently to an angler than a smooth-but-big-swell day |
-| hourly `wave_height`, `swell_wave_height` (not just daily max) | Hour-by-hour wave/swell height | A "Wave timeline" row mirroring the existing Wind/Current timeline rows — shows building/easing swell through the day, useful for picking a launch/return window |
 | Multiple marine models (`ewam`, `gwam`, `best_match`, etc.) | Model choice for wave data | Similar model-consensus consideration as weather above |
 
 ### From WorldTides API (would need `datums`/other flags added to the existing request)
@@ -113,19 +113,17 @@ parameter on an existing request.
 Roughly ordered by "fishing-relevance vs. implementation cost", assuming
 no new API key or paid plan beyond what's already in use:
 
-1. **Barometric pressure** (`pressure_msl`, hourly — already fetchable
-   alongside existing weather fields) — high angler interest, near-zero
-   added cost (one more `hourly=` parameter, no new endpoint).
-2. **Wind-wave vs. swell split** (`wind_wave_height/period/direction`,
-   already available from the Marine API we call) — turns the existing
-   wave/swell icon distinction from illustrative into data-driven.
-3. **Hourly wave/swell height** → a "Wave timeline" row, mirroring the
-   existing Wind/Current timeline pattern exactly — moderate effort (new
-   row + icon), reuses established UI conventions.
-4. **UV index** (daily max, already fetchable from Forecast API) — cheap,
-   useful for full-day trip planning, could sit as a small icon in the
-   Weather or Sun row.
+1. ✅ **Barometric pressure** — implemented (screen-only Pressure row).
+2. ✅ **Wind-wave vs. swell split** — implemented (screen-only "wind chop"
+   detail line under the Waves/Swell icon).
+3. ✅ **Hourly wave/swell height** — implemented (screen-only Wave (2h)
+   timeline row).
+4. ✅ **UV index** — implemented (screen-only badge in the Weather row).
 5. **WorldTides real sampled heights** — only benefits WorldTides-backed
    (non-QLD) locations, doubles WorldTides credit cost per location/day, so
    lower priority unless a specific complaint arises about curve accuracy
    for Tasmania/NSW/Victoria presets.
+
+Items 1–4 above are **screen-view only** by design (not printed) — they add
+useful at-a-glance detail for interactive/online browsing but were kept off
+the laminated print sheet to preserve its 2-page A4 layout and readability.
