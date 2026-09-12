@@ -342,6 +342,11 @@ table.planner-table {
 .wave-squiggle { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; opacity: 0.85; vector-effect: non-scaling-stroke; }
 .wave-lines { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; vector-effect: non-scaling-stroke; }
 
+/* ocean current direction line, shown under the wave/swell bars */
+.current-line { display: flex; align-items: center; gap: 0.15em; justify-content: center; }
+.current-arrow-svg { width: 0.85em; height: 0.85em; flex: none; vertical-align: middle; }
+.current-arrow { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+
 /* Weather cell cloud-cover + precipitation-type icons: small, simplified
    flat icons (sun/cloud/fog and raindrop/snowflake/bolt), inline before the
    temperature/description text. Kept mid-grey (cloud/fog) or accent-blue

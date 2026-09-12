@@ -18,7 +18,7 @@ every API used must support CORS for browser `fetch()` calls.
   phase and solunar rating are unaffected since they don't depend on this
   API at all.
 
-## 2. Waves / swell / sea temperature — Open-Meteo Marine API
+## 2. Waves / swell / sea temperature / ocean current — Open-Meteo Marine API
 
 - Endpoint: `https://marine-api.open-meteo.com/v1/marine`
 - No API key required. CORS-enabled.
@@ -27,6 +27,14 @@ every API used must support CORS for browser `fetch()` calls.
   `swell_wave_period_max`.
 - Sea surface temperature is only available hourly (`hourly=sea_surface_temperature`);
   the app averages the daytime hours (6am–6pm) per day for a daily figure.
+- Ocean surface current (`hourly=ocean_current_velocity,ocean_current_direction`)
+  is also only available hourly, sourced from ECMWF/Copernicus Marine/DWD/NOAA
+  models at roughly 8km resolution (a coarse, offshore-representative value —
+  not tuned for very close inshore accuracy). The app averages the 6am–6pm
+  hourly readings into a single daily speed (km/h) and a circular mean
+  direction (to avoid wrap-around error near 0°/360°), shown as a small arrow
+  and label under the Waves/Swell row, using the same "direction of travel"
+  convention as the swell arrow (API direction + 180°).
 - Same rolling-window limitation as the Forecast API above (roughly 3
   months back to ~16 days ahead of today).
 

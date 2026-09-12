@@ -313,7 +313,8 @@ function hourlyWindForDay(weatherHourly, isoDay, intervalHours) {
 async function fetchMarine(lat, lon, startIso, endIso, tz) {
   const build = (s, e) => `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}` +
     `&daily=wave_height_max,wave_direction_dominant,wave_period_max,swell_wave_height_max,` +
-    `swell_wave_direction_dominant,swell_wave_period_max&hourly=sea_surface_temperature` +
+    `swell_wave_direction_dominant,swell_wave_period_max&hourly=sea_surface_temperature,` +
+    `ocean_current_velocity,ocean_current_direction` +
     `&start_date=${s}&end_date=${e}&timezone=${encodeURIComponent(tz)}`;
   let res = await fetch(build(startIso, endIso));
   if (!res.ok) {
@@ -493,6 +494,34 @@ function dailySeaTemp(marineHourly, isoDay) {
   return n ? sum / n : null;
 }
 
+// average ocean current speed + circular-mean direction over 6am-6pm local
+// for each day (circular mean avoids the wrap-around error a plain average
+// would give near 0/360deg, same reasoning as wind direction averaging
+// elsewhere would need, though wind here only ever uses a single dominant
+// reading rather than an hourly average).
+function dailyOceanCurrent(marineHourly, isoDay) {
+  const times = marineHourly.time;
+  const speeds = marineHourly.ocean_current_velocity;
+  const dirs = marineHourly.ocean_current_direction;
+  if (!speeds || !dirs) return { speed: null, dir: null };
+  let sumSpeed = 0, sumSin = 0, sumCos = 0, n = 0;
+  for (let i = 0; i < times.length; i++) {
+    if (!times[i].startsWith(isoDay)) continue;
+    const hour = parseInt(times[i].slice(11, 13), 10);
+    if (hour >= 6 && hour <= 18 && speeds[i] != null && dirs[i] != null) {
+      sumSpeed += speeds[i];
+      const rad = (dirs[i] * Math.PI) / 180;
+      sumSin += Math.sin(rad);
+      sumCos += Math.cos(rad);
+      n++;
+    }
+  }
+  if (!n) return { speed: null, dir: null };
+  let dir = (Math.atan2(sumSin / n, sumCos / n) * 180) / Math.PI;
+  if (dir < 0) dir += 360;
+  return { speed: sumSpeed / n, dir };
+}
+
 // ---------- offline-friendly caching ----------
 // Wraps a network fetch: on success, stashes the JSON response (with a
 // timestamp) in localStorage; on failure (offline, DNS, CORS, etc.) falls
@@ -543,7 +572,7 @@ async function cachedFetch(cacheKey, fetcher) {
 // well-shaped result to index into (all lookups already treat a missing
 // `wIdx`/`mIdx` as "no data for this day" and render "\u2014").
 const EMPTY_WEATHER = { daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], windspeed_10m_max: [], windspeed_10m_mean: [], windgusts_10m_max: [], winddirection_10m_dominant: [], sunrise: [], sunset: [], precipitation_sum: [], precipitation_probability_max: [], weathercode: [] }, hourly: { time: [], windspeed_10m: [], winddirection_10m: [] } };
-const EMPTY_MARINE = { daily: { time: [], wave_height_max: [], wave_direction_dominant: [], wave_period_max: [], swell_wave_height_max: [], swell_wave_direction_dominant: [], swell_wave_period_max: [] }, hourly: { time: [], sea_surface_temperature: [] } };
+const EMPTY_MARINE = { daily: { time: [], wave_height_max: [], wave_direction_dominant: [], wave_period_max: [], swell_wave_height_max: [], swell_wave_direction_dominant: [], swell_wave_period_max: [] }, hourly: { time: [], sea_surface_temperature: [], ocean_current_velocity: [], ocean_current_direction: [] } };
 
 async function buildPlan(settings) {
   const { lat, lon, start, key } = settings;
@@ -583,6 +612,7 @@ async function buildPlan(settings) {
     const moon = window.MoonCalc.getMoonInfo(date);
 
     const tideCurve = tides.missingDays.includes(iso) ? null : buildDayCurve(date, tides.sortedEvents);
+    const oceanCurrent = dailyOceanCurrent(marine.hourly, iso);
 
     days.push({
       date,
@@ -610,6 +640,8 @@ async function buildPlan(settings) {
         mIdx >= 0 ? marine.daily.swell_wave_period_max[mIdx] : null,
       ),
       seaTemp: dailySeaTemp(marine.hourly, iso),
+      currentSpeed: oceanCurrent.speed,
+      currentDir: oceanCurrent.dir,
       tempMin: wIdx >= 0 ? weather.daily.temperature_2m_min[wIdx] : null,
       tempMax: wIdx >= 0 ? weather.daily.temperature_2m_max[wIdx] : null,
       weatherCode: wIdx >= 0 ? weather.daily.weathercode[wIdx] : null,
@@ -1207,7 +1239,27 @@ function waveIconSvg(d, waveScale) {
     `<text x="${waveX + barW / 2}" y="${valueY}" text-anchor="middle" class="wave-label">${d.waveHeight.toFixed(1)}m</text>` +
     `<text x="${swellX + barW / 2}" y="${h - 1}" text-anchor="middle" class="wave-label">${d.swellHeight != null ? d.swellHeight.toFixed(1) + "m" : "\u2014"}</text>` +
     `</svg>` +
-    `<div class="muted">${degToCompass(d.swellDir)} swell \u00B7 ${d.swellPeriod != null ? d.swellPeriod.toFixed(0) + "s period" : "\u2014"}</div>`;
+    `<div class="muted">${degToCompass(d.swellDir)} swell \u00B7 ${d.swellPeriod != null ? d.swellPeriod.toFixed(0) + "s period" : "\u2014"}</div>` +
+    currentLineHtml(d);
+}
+
+// Small inline arrow + label showing the ocean surface current's *travel*
+// direction (compass "flowing towards", i.e. direction + 180 from the
+// meteorological "coming from" convention the API returns - same
+// convention as the swell travel arrow above) and speed, shown as its own
+// line under the wave/swell row so it doesn't compete for space with the
+// two main bar icons. Sourced from Open-Meteo Marine's hourly
+// ocean_current_direction/ocean_current_velocity, averaged 6am-6pm local
+// (see dailyOceanCurrent()).
+function currentLineHtml(d) {
+  if (d.currentSpeed == null || d.currentDir == null) return "";
+  const travelDeg = (d.currentDir + 180) % 360;
+  const arrow = `<svg class="current-arrow-svg" viewBox="0 0 14 14" role="img" aria-label="Current direction">` +
+    `<g transform="translate(7,7) rotate(${travelDeg.toFixed(0)})">` +
+    `<line x1="0" y1="4.5" x2="0" y2="-4.5" class="current-arrow"></line>` +
+    `<polyline points="-3,-1.5 0,-4.5 3,-1.5" class="current-arrow"></polyline>` +
+    `</g></svg>`;
+  return `<div class="muted current-line">${arrow} ${degToCompass(d.currentDir)} current \u00B7 ${d.currentSpeed.toFixed(1)} km/h</div>`;
 }
 
 // Wind icon: a compass rose (fixed N/E/S/W ticks + ring, for absolute
