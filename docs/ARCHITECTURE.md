@@ -914,19 +914,25 @@ change).
   short, thin one at a glance, without needing to read the numeric
   speed label underneath.
 
-- **Main Wind icon shows Avg/Max/Gust as a box-whisker-style barb** -
-  `windIconSvg()` now draws three overlaid tapered barbs on the same
-  compass bearing instead of one: a wide, outlined "Gust" barb behind
-  (`.wind-barb-gust`, unfilled/stroke-only so it doesn't compete for
-  ink), a solid black "Max" barb on top of that (`.wind-barb-max`,
-  matching the numeric label in the circle), and a narrower solid grey
-  "Avg" barb in the foreground (`.wind-barb-avg`, the lightest tone so it
-  reads as "typical", nested visually like a box-plot's median line
-  inside a box). Widths scale independently per stat (gust widest,
-  avg narrowest) so a quick glance at how much wider the barb flares
-  from centre-out shows how gusty conditions are, even before reading
-  the Avg/Max/Gust numbers next to it. Falls back to `windSpeed` for
-  gust/avg if either isn't supplied.
+- **Main Wind icon shows Avg/Max/Gust as a true box-and-whisker plot** -
+  an earlier version tried encoding Avg/Max/Gust as three overlapping
+  same-length triangles of different width/colour, but at this icon's
+  small size the colour/width differences were too subtle to read as
+  anything but "one dark blob". `windIconSvg()` now draws a real
+  box-and-whisker instead, along the radial line pointing at the compass
+  bearing the wind is coming FROM, with **distance from the centre
+  circle encoding speed** (not just width/shade): a solid black box
+  (`.wind-barb-max`) spans from the centre circle's edge out to Max, a
+  thin whisker line + end-cap (`.wind-barb-gust`) continues further out
+  from Max to Gust (only drawn when Gust > Max), and a white tick line
+  (`.wind-barb-avg`) crosses the box wherever Avg falls along it -
+  visually identical in spirit to a statistical box-whisker plot, just
+  applied radially on the compass rather than on a normal axis. This
+  makes gustiness ("how much further the whisker reaches past the box")
+  and the average-vs-max relationship ("where the white tick sits inside
+  the box") both readable at a glance, including in black-and-white
+  print. Falls back to `windSpeed` for gust/avg if either isn't
+  supplied.
 
 ## Offline support
 
