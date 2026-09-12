@@ -598,6 +598,14 @@ boat-launch safety/comfort read even on the laminated sheet:
   each print page's heading + table live inside the rotated wrapper.
   Verified via Puppeteer PDF export (`preferCSSPageSize: true`) that both
   print pages render full-bleed and correctly oriented.
+- **Rotated print content stretched to fill the full page width** - after
+  the portrait+rotate fix above, the heading+table's natural content
+  height was shorter than the 200mm target box, so once rotated it left
+  a blank gap instead of filling the printed page's full width. Fixed by
+  making `.print-page-rotate` a flex column (`heading: flex: 0 0 auto`,
+  `table.print-table: flex: 1 1 auto; height: 100%`) so the table
+  stretches its rows to consume all remaining space in the box before
+  rotation, filling the page edge-to-edge after the 90deg rotation.
 - **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
   parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
   existing swell line using the Marine API's daily `wind_wave_height_max`/

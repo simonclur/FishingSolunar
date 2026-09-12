@@ -521,7 +521,10 @@ table.planner-table {
   .print-page:last-child { page-break-after: auto; }
 
   /* Rotate the landscape-oriented content 90deg so it fills the portrait
-     print page edge-to-edge (see .print-page comment above). */
+     print page edge-to-edge (see .print-page comment above). Flex column
+     so the table stretches to fill the full box height (which becomes
+     the printed page's *width* after rotation) instead of leaving a gap
+     when the table's natural content height is shorter than the page. */
   .print-page-rotate {
     width: 287mm;
     height: 200mm;
@@ -530,7 +533,11 @@ table.planner-table {
     position: absolute;
     top: 0;
     left: 200mm;
+    display: flex;
+    flex-direction: column;
   }
+  .print-page-rotate .print-heading { flex: 0 0 auto; }
+  .print-page-rotate table.print-table { flex: 1 1 auto; height: 100%; }
 
   .print-heading {
     font-size: 12pt;
