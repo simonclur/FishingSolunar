@@ -1980,7 +1980,7 @@ const ROW_DEFS = [
   { key: "seaTemp", label: "Sea temp", render: (d) => d.seaTemp == null ? "\u2014" : `${d.seaTemp.toFixed(1)}\u00B0C` },
   {
     key: "weather", label: "Weather",
-    render: (d, scales, isPrint) => `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}${!isPrint && d.uvIndexMax != null ? ` ${uvBadgeHtml(d.uvIndexMax)}` : ""}`,
+    render: (d, scales, isPrint) => `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}${d.uvIndexMax != null ? ` ${uvBadgeHtml(d.uvIndexMax)}` : ""}`,
   },
   {
     key: "pressure", label: "Pressure", printDefault: false,

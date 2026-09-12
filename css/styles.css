@@ -532,7 +532,8 @@ table.planner-table {
   .print-table .wave-timeline-value,
   .print-table .temp-pill,
   .print-table .wave-energy-pill,
-  .print-table .wind-stat-val {
+  .print-table .wind-stat-val,
+  .print-table .uv-badge {
     background: none !important; color: #000 !important; padding: 0 !important;
   }
   .print-table .wind-stat-label { color: #000 !important; }

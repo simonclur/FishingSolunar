@@ -566,6 +566,14 @@ boat-launch safety/comfort read even on the laminated sheet:
   weather-condition text; changed to render inline right after it
   (space-separated, no `<br>`) to save vertical space, with `.uv-badge`'s
   `margin-top` swapped for `margin-left` to suit its new inline position.
+- **UV index included in print** - the Weather row's UV badge used to be
+  screen-only (`!isPrint && d.uvIndexMax != null`); the `!isPrint` guard
+  was removed so it now always renders. `.uv-badge` was added to the
+  existing print rule that strips background colour/padding from all
+  value pills (`.print-table .wind-speed-pill, .temp-pill, ...`), so in
+  print it shows as plain bold black text ("UV 7") next to the weather
+  condition rather than a coloured badge, keeping it legible and
+  print-safe without extra print-specific styling.
 - **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
   parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
   existing swell line using the Marine API's daily `wind_wave_height_max`/
