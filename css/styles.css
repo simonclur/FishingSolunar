@@ -186,6 +186,24 @@ table.planner-table {
 .fish-tail { fill: #1f6fb2; stroke: none; }
 .fish-eye { fill: #fff; stroke: none; }
 
+/* Collapsed row-label glyphs (Wind/Wind timeline, Waves/Swell, Wave
+   energy) - small SVG icons rather than emoji, styled to echo the common
+   weather-app "windy"/"waves" icon look. Screen-only, sized to sit inline
+   with .row-label-short's font-size/line-height. */
+.row-label-short-icon { width: 1.3em; height: 0.74em; vertical-align: -0.08em; overflow: visible; }
+.wind-gust-1, .wind-gust-2, .wind-gust-3 {
+  fill: none; stroke-linecap: round; stroke-linejoin: round;
+}
+.wind-gust-1 { stroke: #90cdf4; stroke-width: 1.6; }
+.wind-gust-2 { stroke: #4299e1; stroke-width: 1.8; }
+.wind-gust-3 { stroke: #2b6cb0; stroke-width: 1.6; }
+.wave-swirl-1, .wave-swirl-2 {
+  fill: none; stroke-linecap: round; stroke-linejoin: round;
+}
+.wave-swirl-1 { stroke: #4fd1e8; stroke-width: 1.8; }
+.wave-swirl-2 { stroke: #1e88d6; stroke-width: 1.8; }
+.wave-energy-bolt { fill: #f5a623; stroke: none; }
+
 .planner-table .dow { font-weight: 800; font-size: 1.05em; }
 .planner-table .daymonth { font-weight: 700; color: var(--ink); }
 .planner-table thead th:not(.row-label-col) {

@@ -1900,28 +1900,66 @@ function fishLabelIconSvg() {
     `</svg>`;
 }
 
+// Stylised "wind gust" swirl icon (three rounded, hook/spiral-shaped
+// strokes of increasing size, light-to-dark blue) used as the collapsed
+// row-label glyph for the Wind/Wind timeline rows - replaces the plain
+// \u{1F4A8} emoji with something closer to the common weather-app "windy"
+// icon look. Screen-only (see ROW_SHORT_ICONS / .row-label-short), so its
+// colour is unaffected by print's black-and-white rules.
+function windGustIconSvg() {
+  return `<svg class="row-label-short-icon" viewBox="0 0 28 16" role="img" aria-label="Wind">` +
+    `<path d="M2 4 C6 4, 6 1, 9.5 1 C12 1, 12 4, 9.5 4 L2 4" class="wind-gust-1"></path>` +
+    `<path d="M2 9 C10 9, 10 2, 17 2 C22 2, 22 8, 17 8 C14 8, 14 5.5, 16.5 5.5" class="wind-gust-2"></path>` +
+    `<path d="M2 14 C7 14, 7 11, 10.5 11 C13 11, 13 14, 10.5 14 L2 14" class="wind-gust-3"></path>` +
+    `</svg>`;
+}
+
+// Stylised two-layer "ocean wave" swirl icon (a curling wave crest over a
+// second wave line beneath it, light-to-dark blue) used as the collapsed
+// row-label glyph for the Waves/Swell row - replaces the plain \u{1F30A}
+// emoji with something closer to the common weather-app "waves" icon
+// look. Screen-only (see ROW_SHORT_ICONS / .row-label-short).
+function waveSwirlIconSvg() {
+  return `<svg class="row-label-short-icon" viewBox="0 0 28 16" role="img" aria-label="Waves">` +
+    `<path d="M1 6 C5 6, 5 1, 9.5 1 C13 1, 13 6, 17.5 6 C22 6, 22 3, 25 3" class="wave-swirl-1"></path>` +
+    `<path d="M1 12 C6 12, 6 8, 11 8 C16 8, 16 12, 21 12 C24 12, 25 10.5, 27 10.5" class="wave-swirl-2"></path>` +
+    `</svg>`;
+}
+
+// Wave energy row's collapsed glyph: the same wave-swirl shape (just the
+// lower/simpler line, to leave room) plus a small lightning bolt, echoing
+// the "wave + energy" combination the full text label conveys.
+function waveEnergyIconSvg() {
+  return `<svg class="row-label-short-icon" viewBox="0 0 28 16" role="img" aria-label="Wave energy">` +
+    `<path d="M1 11 C5 11, 5 6.5, 9 6.5 C13 6.5, 13 11, 17 11" class="wave-swirl-2"></path>` +
+    `<path d="M20 1 L15.5 8.5 L19 8.5 L16.5 15 L23.5 6 L19.5 6 Z" class="wave-energy-bolt"></path>` +
+    `</svg>`;
+}
+
 // Compact 1-2 glyph representations shown in the row-label column when it's
 // collapsed (screen view only - see `.row-label-col--collapsed` / the click
 // handler wired in `wireRowLabelToggle()`). Kept as small emoji glyphs
 // rather than new SVGs since this collapsed state is a screen-only space
 // saver (print always shows full text labels, so B&W/laminated print
-// legibility is unaffected by using colour emoji here).
+// legibility is unaffected by using colour emoji here) - `wind`/
+// `windTimeline` are the exception, using windGustIconSvg() instead of an
+// emoji for a closer match to the common weather-app "windy" icon look.
 const ROW_SHORT_ICONS = {
   solunar: "\u{1F3A3}", // fishing rod
   tideHigh: "\u{2B06}\u{FE0F}\u{1F30A}", // up arrow + wave
   tideLow: "\u{2B07}\u{FE0F}\u{1F30A}", // down arrow + wave
   tideCurve: "\u{1F30A}\u{1F4C8}", // wave + chart
-  waves: "\u{1F30A}",
+  waves: waveSwirlIconSvg(),
   windWaveTimeline: "\u{1F4A8}\u{1F30A}",
   waveTimeline: "\u{1F30A}",
   swellTimeline: "\u{1F30A}\u2197\uFE0F",
-  waveEnergy: "\u{26A1}",
+  waveEnergy: waveEnergyIconSvg(),
   seaTemp: "\u{1F30A}\u{1F321}\u{FE0F}",
   weather: "\u{26C5}",
   pressure: "\u{1F321}\u{FE0F}\u{1F4CA}",
   rain: "\u{1F327}\u{FE0F}",
-  wind: "\u{1F4A8}",
-  windTimeline: "\u{1F4A8}",
+  wind: windGustIconSvg(),
+  windTimeline: windGustIconSvg(),
   currentTimeline: "\u{1F30A}\u{27A1}\u{FE0F}",
   sun: "\u{2600}\u{FE0F}",
   moon: "\u{1F319}",

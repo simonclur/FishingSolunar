@@ -574,6 +574,17 @@ boat-launch safety/comfort read even on the laminated sheet:
   print it shows as plain bold black text ("UV 7") next to the weather
   condition rather than a coloured badge, keeping it legible and
   print-safe without extra print-specific styling.
+- **Collapsed row-label icons redesigned for Wind/Waves/Wave energy** -
+  the compact 1-2 glyph icons shown when the row-label column is collapsed
+  (`ROW_SHORT_ICONS`, screen-only) previously used plain emoji
+  (\u{1F4A8} wind, \u{1F30A} wave, \u26A1 lightning) for these three rows;
+  replaced with small custom SVGs matching the look of common weather-app
+  icon sets: `windGustIconSvg()` (three light-to-dark-blue curling swirl
+  strokes) for Wind/Wind timeline, `waveSwirlIconSvg()` (two stacked wave
+  crests, light-to-dark blue) for Waves/Swell, and `waveEnergyIconSvg()`
+  (a smaller wave line plus an orange lightning bolt) for Wave energy.
+  New `.row-label-short-icon`/`.wind-gust-*`/`.wave-swirl-*`/
+  `.wave-energy-bolt` CSS added; other rows' emoji glyphs are unchanged.
 - **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
   parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
   existing swell line using the Marine API's daily `wind_wave_height_max`/
