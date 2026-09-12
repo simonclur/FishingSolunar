@@ -1554,21 +1554,20 @@ function windTimelineHtml(d, intervalHours, isPrint) {
   return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
 }
 
-// Small arrow showing ocean current *travel* direction (unlike the wind
-// barb, which points where wind is blowing FROM/TO with a tail/tip shape -
-// current direction here is shown as a simple arrow pointing the direction
-// the water is flowing towards, consistent with the arrow used in
+// Small arrow showing travel direction for either ocean current or swell
+// (unlike the wind barb, which points where wind is blowing FROM/TO with a
+// tail/tip shape - here it's a simple arrow pointing the direction the
+// water/swell is travelling towards, consistent with the arrow used in
 // waveIconSvg() above). `maxScale` (optional) lets a caller normalise
-// `currentSpeed` against a known max so both stroke width and arrow length
-// scale from thin/short (weak) to thick/long (strong) - mirrors
-// `miniWindBarbSvg()`'s speed-scaled tail width. Without `maxScale` (e.g.
-// the Swell timeline row, which reuses this same shape for a travel-
-// direction arrow but passes a wave height in metres, not a current speed)
-// the arrow renders at its original fixed thin/short size, unaffected.
-function miniCurrentArrowSvg(currentDir, currentSpeed, maxScale) {
-  if (currentDir == null || currentSpeed == null) return '<span class="muted">\u2014</span>';
+// `magnitude` (current speed in km/h, or swell height in metres) against a
+// known max so both stroke width and arrow length scale from thin/short
+// (weak) to thick/long (strong) - mirrors `miniWindBarbSvg()`'s
+// speed-scaled tail width. Without `maxScale` the arrow renders at its
+// original fixed thin/short size.
+function miniCurrentArrowSvg(currentDir, magnitude, maxScale) {
+  if (currentDir == null || magnitude == null) return '<span class="muted">\u2014</span>';
   const travelDeg = (currentDir + 180) % 360;
-  const scale = maxScale ? Math.min(Math.max(currentSpeed / maxScale, 0), 1) : null;
+  const scale = maxScale ? Math.min(Math.max(magnitude / maxScale, 0), 1) : null;
   // Thin (1px) + short (4px half-length) for weak current, thick (3px) +
   // long (8px half-length) for strong - halfLen 4..8, strokeW 1..3.
   const halfLen = scale != null ? 4 + scale * 4 : 6;
@@ -1695,7 +1694,7 @@ function swellTimelineHtml(d, scale) {
     const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      (h.swellDir != null ? miniCurrentArrowSvg(h.swellDir, val) : `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>`) +
+      (h.swellDir != null ? miniCurrentArrowSvg(h.swellDir, val, maxH) : `<div class="wave-timeline-bar-wrap">${timelineBarSvg(barH, barMaxPx)}</div>`) +
       `<div class="wind-timeline-speed wave-timeline-value"${waveHeightStyle(val)}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");

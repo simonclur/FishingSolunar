@@ -370,18 +370,21 @@ they read as one family of "at a glance" water/weather icons:
   scale, but with much lower breakpoints (~0.5-4kt) since coastal tidal
   currents rarely reach the tens-of-knots range wind does; print stays
   plain black/no background as usual. The arrow itself is also
-  speed-scaled (`miniCurrentArrowSvg(dir, speed, maxScale)`'s optional
+  speed-scaled (`miniCurrentArrowSvg(dir, magnitude, maxScale)`'s optional
   third argument): stroke width ramps 1px\u21923px and half-length ramps
-  4px\u21928px as speed goes from 0 to that day's max current speed (at
-  least 3km/h, so a flat/near-zero day doesn't stretch its weakest arrows
-  to "full strength" the way the fixed per-day timeline-bar scaling bug
-  once did for Wave/Swell/Wind-chop - see the bug-fix note below), giving
-  a thin/short arrow for weak current and a thick/long one for strong,
-  mirroring `miniWindBarbSvg()`'s speed-scaled tail width. The Swell
-  timeline row reuses this same arrow shape for its travel-direction glyph
-  but calls it without `maxScale`, so it keeps its original fixed
-  thin/short size there (that row already has its own bar+colour encoding
-  of magnitude, so the arrow is direction-only).
+  4px\u21928px as the value goes from 0 to a caller-supplied max (at
+  least 3km/h for current, so a flat/near-zero day doesn't stretch its
+  weakest arrows to "full strength" the way the fixed per-day
+  timeline-bar scaling bug once did for Wave/Swell/Wind-chop - see the
+  bug-fix note below), giving a thin/short arrow for weak current and a
+  thick/long one for strong, mirroring `miniWindBarbSvg()`'s speed-scaled
+  tail width. The Swell timeline row reuses this same function/shape for
+  its travel-direction glyph, passing the shared window-wide
+  `waveTimelineScale.max` (metres) as `maxScale` instead of a current
+  speed, so swell arrows are thin/short for a calm ~0.3m day and
+  thick/long for a big ~2m+ day - the same visual language as Current,
+  just scaled to a different unit/magnitude, layered on top of that row's
+  existing bar+colour height encoding.
 
 All three icon systems share `overflow: visible` on their SVG elements
 (`.tide-curve-svg`, `.wind-icon-svg`) since labels/markers/arrows are
