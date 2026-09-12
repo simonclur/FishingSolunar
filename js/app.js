@@ -822,6 +822,40 @@ function tempStyle(tempC, isPrint) {
   return ` style="background-color:${color};color:${textColor}"`;
 }
 
+// Ocean-current-speed colour scale. There's no single official standard,
+// but oceanographic/marine charts (e.g. NOAA surface-current maps) commonly
+// use a "blue = slow, green/yellow = moderate, red/purple = fast" ramp with
+// breakpoints in the roughly-0-4kt range typical of most coastal tidal
+// currents (unlike wind, which regularly spans 0-60+ knots) - see
+// docs/ARCHITECTURE.md for sourcing notes. Thresholds are in km/h (as
+// returned by Open-Meteo) but chosen to land on round knot values
+// (0.5/1/1.5/2/3/4kt) since that's how current strength is conventionally
+// described.
+const CURRENT_SPEED_SCALE = [
+  { max: 0.9, color: "#0064ff" },   // < 0.5kt: calm - blue
+  { max: 1.85, color: "#00c7ff" },  // 0.5-1kt: light blue
+  { max: 2.8, color: "#11d411" },   // 1-1.5kt: green
+  { max: 3.7, color: "#fffe00" },   // 1.5-2kt: yellow
+  { max: 5.6, color: "#ff9600" },   // 2-3kt: orange
+  { max: 7.4, color: "#e66400" },   // 3-4kt: dark orange/red
+  { max: Infinity, color: "#b40032" }, // 4kt+: deep red/magenta
+];
+const CURRENT_SPEED_WHITE_TEXT_MAX_INDEX = new Set([0, 1, 5, 6]);
+
+function currentSpeedStageIndex(speedKmh) {
+  for (let i = 0; i < CURRENT_SPEED_SCALE.length; i++) {
+    if (speedKmh < CURRENT_SPEED_SCALE[i].max) return i;
+  }
+  return CURRENT_SPEED_SCALE.length - 1;
+}
+
+function currentSpeedStyle(speedKmh, isPrint) {
+  if (speedKmh == null || isPrint) return "";
+  const idx = currentSpeedStageIndex(speedKmh);
+  const textColor = CURRENT_SPEED_WHITE_TEXT_MAX_INDEX.has(idx) ? "#fff" : "#111";
+  return ` style="background-color:${CURRENT_SPEED_SCALE[idx].color};color:${textColor}"`;
+}
+
 function tideCell(list, tz, sunrise, sunset, curveScale, kind) {
   if (!list || !list.length) return "\u2014";
   return list.map((e, i) => {
@@ -1408,7 +1442,7 @@ function currentTimelineHtml(d, intervalHours, isPrint) {
     return `<div class="wind-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       miniCurrentArrowSvg(h.dir, h.speed) +
-      `<div class="wind-timeline-speed">${h.speed != null ? h.speed.toFixed(1) : "\u2014"}</div>` +
+      `<div class="wind-timeline-speed current-timeline-speed"${currentSpeedStyle(h.speed, isPrint)}>${h.speed != null ? h.speed.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
   return `<div class="wind-timeline">${cells}</div>`;
@@ -1468,6 +1502,11 @@ const ROW_DEFS = [
     render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCurveSvg(d, scales?.curveScale, isPrint ? 4 : 2, isPrint),
   },
   {
+    key: "currentTimeline", label: "Current", cellClass: "wind-timeline-cell-wrap",
+    labelSub: { screen: "(2h)", print: "(4h)" },
+    render: (d, scales, isPrint) => currentTimelineHtml(d, isPrint ? 4 : 2, isPrint),
+  },
+  {
     key: "waves", label: "Waves / Swell", cellClass: "wave-icon-cell",
     render: (d, scales) => waveIconSvg(d, scales?.waveScale),
   },
@@ -1509,11 +1548,6 @@ const ROW_DEFS = [
     key: "windTimeline", label: "Wind", cellClass: "wind-timeline-cell-wrap",
     labelSub: { screen: "(2h)", print: "(4h)" },
     render: (d, scales, isPrint) => windTimelineHtml(d, isPrint ? 4 : 2, isPrint),
-  },
-  {
-    key: "currentTimeline", label: "Current", cellClass: "wind-timeline-cell-wrap",
-    labelSub: { screen: "(2h)", print: "(4h)" },
-    render: (d, scales, isPrint) => currentTimelineHtml(d, isPrint ? 4 : 2, isPrint),
   },
   {
     key: "sun", label: "Sun",

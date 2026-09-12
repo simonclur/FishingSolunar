@@ -405,6 +405,9 @@ table.planner-table {
 .wind-timeline-speed {
   font-size: 0.62rem; font-weight: 700; line-height: 1.1;
 }
+.current-timeline-speed {
+  font-size: 0.52rem; padding: 0.05em 0.25em; border-radius: 0.2em; margin-top: 0.05rem;
+}
 .wind-barb-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; }
 .wind-barb-mini { fill: var(--ink); stroke: none; }
 .wind-barb-mini-outline { stroke: #fff; stroke-width: 0.8; paint-order: stroke fill; }

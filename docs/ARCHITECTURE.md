@@ -353,16 +353,23 @@ they read as one family of "at a glance" water/weather icons:
   window, since the goal here is relative change through one day rather
   than cross-day comparison).
 - **Current timeline** (`currentTimelineHtml()` / `miniCurrentArrowSvg()`):
-  a separate "Current" row below the Wind timeline row, laid out identically
-  (same `hour / 24 * 100`% absolute positioning, same 2h screen / 4h print
-  density split, same `[hour label / mini icon / value]` cell stack) so it
-  lines up on the same time grid as the Wind timeline and Tide curve axis.
+  a row positioned directly above the Waves/Swell row (grouped with the
+  other marine-condition rows rather than beside Wind, per user preference),
+  laid out identically to the Wind timeline row (same `hour / 24 * 100`%
+  absolute positioning, same 2h screen / 4h print density split, same
+  `[hour label / mini icon / value]` cell stack) so it lines up on the same
+  time grid as the Wind timeline and Tide curve axis.
   `hourlyCurrentForDay()` pulls `ocean_current_velocity`/`ocean_current_direction`
   from the Marine API's hourly arrays (see docs/DATA_SOURCES.md) the same
   way `hourlyWindForDay()` pulls wind. Unlike the wind barb's
   tail/tip shape, the current icon is a plain arrow pointing the direction
   the water is *travelling towards* (API direction + 180°, matching the
-  swell-direction arrow in the Waves/Swell row).
+  swell-direction arrow in the Waves/Swell row). The speed number is
+  colour-coded on screen via `currentSpeedStyle()`/`CURRENT_SPEED_SCALE` - a
+  blue-to-red ramp in the same spirit as the Wind row's Windfinder-derived
+  scale, but with much lower breakpoints (~0.5-4kt) since coastal tidal
+  currents rarely reach the tens-of-knots range wind does; print stays
+  plain black/no background as usual.
 
 All three icon systems share `overflow: visible` on their SVG elements
 (`.tide-curve-svg`, `.wind-icon-svg`) since labels/markers/arrows are
