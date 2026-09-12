@@ -15,22 +15,28 @@ const LS_KEYS = {
   printRows: "fishingSolunar.printRows",
 };
 
-// Which of the normally screen-only/always-on timeline rows the user wants
-// included on the printed/laminated sheet. Defaults preserve the
-// pre-existing printed layout (only Current (2h)/(4h) was ever printed) -
-// Wave and Swell were screen-only until this toggle existed. Exposed as
-// plain checkboxes in the settings panel rather than a fixed decision,
-// since which rows are worth the printed real estate is a personal/trip
-// preference (e.g. swell direction matters a lot for a boat launch, less
-// for a beach/rock fisher) and the user explicitly wanted to be able to
-// add then remove them again without a code change.
-const PRINT_ROW_TOGGLE_DEFAULTS = { currentTimeline: true, waveTimeline: false, swellTimeline: false };
+// Which rows the user wants included on the printed/laminated sheet -
+// every row is individually toggle-able (not just a fixed screen-only
+// subset), since the "right" print layout is a personal/trip preference
+// (e.g. swell direction matters a lot for a boat launch, less for a
+// beach/rock fisher) that varies from trip to trip. Defaults come from
+// each row's `printDefault` flag in ROW_DEFS (default `true` when
+// unspecified) so out-of-the-box the printed sheet is unchanged from
+// before this toggle system existed - only Wave, Swell and Pressure were
+// ever screen-only, so those three default to unchecked and everything
+// else defaults to checked.
+function defaultPrintRowToggles() {
+  const defaults = {};
+  for (const row of ROW_DEFS) defaults[row.key] = row.printDefault !== false;
+  return defaults;
+}
 function loadPrintRowToggles() {
+  const defaults = defaultPrintRowToggles();
   try {
     const raw = localStorage.getItem(LS_KEYS.printRows);
-    return raw ? { ...PRINT_ROW_TOGGLE_DEFAULTS, ...JSON.parse(raw) } : { ...PRINT_ROW_TOGGLE_DEFAULTS };
+    return raw ? { ...defaults, ...JSON.parse(raw) } : defaults;
   } catch {
-    return { ...PRINT_ROW_TOGGLE_DEFAULTS };
+    return defaults;
   }
 }
 function savePrintRowToggles(toggles) {
@@ -1938,7 +1944,6 @@ const ROW_DEFS = [
   {
     key: "currentTimeline", label: "Current", cellClass: "wind-timeline-cell-wrap",
     labelSub: { screen: "(2h)", print: "(4h)" },
-    printToggleKey: "currentTimeline",
     render: (d, scales, isPrint) => currentTimelineHtml(d, isPrint ? 4 : 2, isPrint),
   },
   {
@@ -1951,15 +1956,13 @@ const ROW_DEFS = [
     render: (d, scales, isPrint) => waveIconSvg(d, scales?.waveScale, isPrint),
   },
   {
-    key: "waveTimeline", label: "Wave", cellClass: "wind-timeline-cell-wrap", screenOnly: true,
+    key: "waveTimeline", label: "Wave", cellClass: "wind-timeline-cell-wrap", printDefault: false,
     labelSub: { screen: "(2h)", print: "(4h)" },
-    printToggleKey: "waveTimeline",
     render: (d, scales, isPrint) => waveTimelineHtml(d, scales?.waveTimelineScale, isPrint ? 4 : 2, isPrint),
   },
   {
-    key: "swellTimeline", label: "Swell", cellClass: "wind-timeline-cell-wrap", screenOnly: true,
+    key: "swellTimeline", label: "Swell", cellClass: "wind-timeline-cell-wrap", printDefault: false,
     labelSub: { screen: "(2h)", print: "(4h)" },
-    printToggleKey: "swellTimeline",
     render: (d, scales, isPrint) => swellTimelineHtml(d, scales?.waveTimelineScale, isPrint ? 4 : 2, isPrint),
   },
   {
@@ -1978,7 +1981,7 @@ const ROW_DEFS = [
     render: (d, scales, isPrint) => `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}${!isPrint && d.uvIndexMax != null ? `<br>${uvBadgeHtml(d.uvIndexMax)}` : ""}`,
   },
   {
-    key: "pressure", label: "Pressure", screenOnly: true,
+    key: "pressure", label: "Pressure", printDefault: false,
     render: (d) => d.pressure == null ? "\u2014" : `<span class="pressure-pill"${pressureStyle(d.pressure)}>${Math.round(d.pressure)} hPa</span>`,
   },
   {
@@ -2030,16 +2033,12 @@ function buildTable(days, className, scales, printRowToggles) {
 
   const tbody = document.createElement("tbody");
   for (const row of ROW_DEFS) {
-    // Some rows (e.g. Pressure, UV) are always screen-only extras that
-    // don't need to take up space on the laminated print sheet - skip them
-    // entirely for print tables rather than rendering an empty/unwanted
-    // row. A separate subset (Wave/Swell timelines - see `printToggleKey`)
-    // is screen-only *by default* but user-togglable via the settings
-    // panel checkboxes, since whether they're worth the printed space is a
-    // personal/trip preference rather than a fixed decision.
-    if (row.screenOnly && isPrint) {
-      if (!row.printToggleKey || !printRowToggles?.[row.printToggleKey]) continue;
-    }
+    // Every row is individually toggle-able for print via the settings
+    // panel checkboxes (built from ROW_DEFS itself - see
+    // buildPrintRowToggleCheckboxes()), persisted per row `key` in
+    // `printRowToggles`/localStorage. Screen view always shows every row
+    // regardless of this setting - it only affects the print tables.
+    if (isPrint && !printRowToggles?.[row.key]) continue;
     const tr = document.createElement("tr");
     const cellClass = row.cellClass ? ` class="${row.cellClass}"` : "";
     const labelSuffix = row.labelSub ? ` <span class="row-label-sub">${isPrint ? row.labelSub.print : row.labelSub.screen}</span>` : "";
@@ -2293,18 +2292,28 @@ function init() {
   $("startDate").value = saved.start;
   $("worldTidesKey").value = saved.key;
 
-  // Print-row inclusion checkboxes (Current/Wave/Swell (2h) timelines):
-  // reflect the saved preference on open, and re-render immediately on
-  // change so the print-only tables (rebuilt on every render()) pick up
-  // the new choice without needing an "Update" click.
-  const printToggleCheckboxIds = { currentTimeline: "printRowCurrentTimeline", waveTimeline: "printRowWaveTimeline", swellTimeline: "printRowSwellTimeline" };
+  // Print-row inclusion checkboxes: one per ROW_DEFS row (built
+  // dynamically, not hardcoded, so any future new row automatically gets
+  // a checkbox too), reflecting the saved preference on open and
+  // re-rendering immediately on change so the print-only tables (rebuilt
+  // on every render()) pick up the new choice without needing an "Update"
+  // click.
   const savedPrintToggles = loadPrintRowToggles();
-  for (const [key, id] of Object.entries(printToggleCheckboxIds)) {
-    const el = $(id);
-    el.checked = !!savedPrintToggles[key];
+  const checkboxContainer = $("printRowCheckboxes");
+  for (const row of ROW_DEFS) {
+    const labelText = row.labelSub ? `${row.label} ${row.labelSub.print}` : row.label;
+    const label = document.createElement("label");
+    label.className = "checkbox-label";
+    const el = document.createElement("input");
+    el.type = "checkbox";
+    el.id = `printRow-${row.key}`;
+    el.checked = !!savedPrintToggles[row.key];
+    label.appendChild(el);
+    label.appendChild(document.createTextNode(` ${labelText}`));
+    checkboxContainer.appendChild(label);
     el.addEventListener("change", () => {
       const toggles = loadPrintRowToggles();
-      toggles[key] = el.checked;
+      toggles[row.key] = el.checked;
       savePrintRowToggles(toggles);
       if (lastRenderArgs) render(lastRenderArgs.days, lastRenderArgs.settings, lastRenderArgs.tideMeta);
     });

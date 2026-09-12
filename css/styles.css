@@ -576,11 +576,11 @@ table.planner-table {
   .print-table .wind-circle { stroke: #fff; fill: #fff; }
   .print-table .wind-speed-label { fill: #000; }
   .print-table .wind-timeline-cell-wrap { padding: 0.5mm 0 !important; }
-  .print-table .wind-timeline { height: 8mm; }
+  .print-table .wind-timeline { height: 8.8mm; }
   .print-table .wind-timeline-cell { width: 5.2mm; white-space: nowrap; }
-  .print-table .wind-timeline-hour { font-size: 6.5px; color: #000; }
-  .print-table .wind-timeline-speed { font-size: 6pt; color: #000; letter-spacing: -0.3px; }
-  .print-table .wave-timeline-value { font-size: 5.2pt; letter-spacing: -0.3px; }
+  .print-table .wind-timeline-hour { font-size: 6.5px; color: #000; line-height: 1; }
+  .print-table .wind-timeline-speed { font-size: 6pt; color: #000; letter-spacing: -0.3px; line-height: 1; }
+  .print-table .wave-timeline-value { font-size: 5.2pt; letter-spacing: -0.3px; line-height: 1; }
   .print-table .wind-barb-mini-svg { width: 4mm; height: 4mm; }
   .print-table .wind-barb-mini { fill: #000; }
   .print-table .current-arrow-mini-svg { width: 4mm; height: 4mm; }

@@ -474,34 +474,54 @@ boat-launch safety/comfort read even on the laminated sheet:
   the Wind chop row made three timeline rows total feel cramped) as the
   existing Wind/Current timeline rows, so all timeline rows line up on the
   same time-of-day grid.
-- **User-togglable print inclusion for Wave/Swell/Current timeline rows**
-  (a later follow-up) - `Current` was always printed and `Wave`/`Swell`
-  were always screen-only, but which of these is actually worth the
-  printed real estate turned out to be a personal/trip preference (e.g.
-  swell direction matters far more for a boat launch than for bank/rock
-  fishing), so a fixed default no longer suits everyone. `ROW_DEFS` gained
-  a `printToggleKey` per row (`currentTimeline`/`waveTimeline`/
-  `swellTimeline`); `buildTable()`'s screenOnly-skip logic became
-  `if (row.screenOnly && isPrint) { if (!row.printToggleKey ||
-  !printRowToggles?.[row.printToggleKey]) continue; }` - i.e. still hard-
-  skipped for rows with no toggle key (Pressure, UV, etc.), but consults a
-  `printRowToggles` object (persisted to `localStorage` under
-  `fishingSolunar.printRows`, default `{ currentTimeline: true,
-  waveTimeline: false, swellTimeline: false }` to preserve the pre-existing
-  layout) for the three that do have one. Three checkboxes in the settings
-  panel (`#printRowCurrentTimeline`/`#printRowWaveTimeline`/
-  `#printRowSwellTimeline`) read/write this via `loadPrintRowToggles()`/
-  `savePrintRowToggles()` and immediately call `render()` again on change
-  (no "Update" click needed) so the print preview reflects the choice
-  right away. `waveTimelineHtml()`/`swellTimelineHtml()` gained the same
+- **Every row is individually toggle-able for print** (a later follow-up
+  that generalised the above) - initially only `Current` was always
+  printed and `Wave`/`Swell` were user-togglable via a hardcoded
+  `printToggleKey` on those three rows, but it turned out any row's print
+  inclusion is a personal/trip preference, not just those three (e.g.
+  someone might want to drop Moon or Pressure from the laminated sheet
+  too). `ROW_DEFS` items lost the one-off `printToggleKey`/`screenOnly`
+  flags in favour of a single optional `printDefault: false` flag (used
+  only by Wave/Swell/Pressure, the three rows that were screen-only before
+  this system existed) - every row is now looked up by its own `key` in
+  `printRowToggles`. `buildTable()`'s print-skip logic is simply
+  `if (isPrint && !printRowToggles?.[row.key]) continue;`.
+  `defaultPrintRowToggles()` derives the default set straight from
+  `ROW_DEFS` (`row.printDefault !== false`) so the out-of-the-box printed
+  layout is unchanged from before this feature - Wave/Swell/Pressure
+  default off, everything else defaults on. Persisted to `localStorage`
+  under `fishingSolunar.printRows` via `loadPrintRowToggles()`/
+  `savePrintRowToggles()`. The settings panel's checkbox list
+  (`#printRowCheckboxes`) is now built dynamically in `init()` by
+  iterating `ROW_DEFS` (one `<label><input type="checkbox"
+  id="printRow-${row.key}">` per row, labelled with `row.label` +
+  `row.labelSub.print` where present, e.g. "Current (4h)") rather than
+  hardcoded per-row markup in `index.html` - so any future new row
+  automatically gets a print checkbox for free, with no HTML changes
+  needed. Each checkbox re-renders immediately on change (no "Update"
+  click needed) so the print preview reflects the choice right away.
+  `waveTimelineHtml()`/`swellTimelineHtml()` gained the same
   `intervalHours`/`isPrint` parameters the other timeline rows already
   had, so a toggled-on row correctly switches to the coarser 4h print
   interval and disables on-screen-only text colouring, exactly like
-  `windWaveTimelineHtml()` already did. Since enabling any of these adds a
-  full extra row to every printed day, toggling all three on pushes the
-  print output past 2 pages (verified: 4 pages) - this is an accepted,
-  expected trade-off of the feature (the 2-page guarantee only applies to
-  the *default* toggle state), not a bug.
+  `windWaveTimelineHtml()` already did. Since enabling extra rows adds a
+  full extra row to every printed day, toggling many/all optional rows on
+  can push the print output past 2 pages (verified: 4 pages with all three
+  originally-screen-only rows enabled) - an accepted, expected trade-off
+  (the 2-page guarantee only applies to the *default* toggle state), not a
+  bug.
+- **Fixed 2h-row print values overflowing their row height** - a follow-up
+  bugfix found alongside the above: the printed Current/Wind-chop/Wind (4h)
+  timeline rows' value text was rendering slightly below the row's own
+  bottom border in print (though not on screen), because `.wind-timeline`'s
+  fixed print `height: 8mm` was a touch shorter than its own content
+  (hour-tick + icon + value stack) actually needed once print font metrics
+  were accounted for. Fixed by bumping `.print-table .wind-timeline`'s
+  height to `8.8mm` and setting `line-height: 1` on the hour-tick/value
+  text (`.wind-timeline-hour`/`.wind-timeline-speed`/`.wave-timeline-value`
+  print rules) to remove extra leading that was inflating their rendered
+  height - verified the value text now sits fully inside its row's
+  boundary and the 2-page print total is unaffected.
 - **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
   parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
   existing swell line using the Marine API's daily `wind_wave_height_max`/
