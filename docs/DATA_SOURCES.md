@@ -139,6 +139,14 @@ tides, per project requirements. It works in two tiers:
      user-supplied API key entered once in ⚙️ Settings and cached in
      `localStorage` (`fishingSolunar.worldTidesKey`) — sent only to
      worldtides.info.
+   - `fetchWorldTides()` explicitly requests `datum=LAT` — without this,
+     WorldTides defaults to **MSL** (Mean Sea Level), which reports low-tide
+     heights as negative numbers (below the long-term sea-level average).
+     Requesting `LAT` (Lowest Astronomical Tide) matches the datum already
+     used by the bundled QLD CSVs, so all locations — whether local-file or
+     WorldTides-sourced — show heights on the same all-positive-metres
+     convention anglers expect (a Tasmania/NSW/Victoria preset previously
+     showed negative low-tide heights before this fix).
    - The status line under Settings (`#tideSourceNote`) reports which source
      was actually used: local only, local+WorldTides (mixed), WorldTides
      only, or none.

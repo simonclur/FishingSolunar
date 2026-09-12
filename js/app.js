@@ -358,7 +358,17 @@ async function fetchMarine(lat, lon, startIso, endIso, tz) {
 
 async function fetchWorldTides(lat, lon, startIso, days, apiKey) {
   if (!apiKey) throw new Error("no WorldTides API key entered");
-  const url = `https://www.worldtides.info/api/v3?extremes&localtime&date=${startIso}&days=${days}&lat=${lat}&lon=${lon}&key=${encodeURIComponent(apiKey)}`;
+  // Explicitly request LAT (Lowest Astronomical Tide) datum - without this,
+  // WorldTides defaults to MSL (Mean Sea Level), which reports heights
+  // relative to the average sea level and so is commonly negative at low
+  // tide. Our locally-bundled QLD CSVs (data/tides/*.csv, from Maritime
+  // Safety Queensland) are all referenced to LAT, where height is always
+  // >= 0 by definition (the tide can't go below the lowest astronomical
+  // tide under normal conditions) - matching datums here keeps WorldTides
+  // fallback locations (e.g. Tasmania/NSW/VIC presets with no local file)
+  // showing tide heights on the same all-positive convention anglers
+  // expect, instead of confusingly negative MSL-relative numbers.
+  const url = `https://www.worldtides.info/api/v3?extremes&localtime&datum=LAT&date=${startIso}&days=${days}&lat=${lat}&lon=${lon}&key=${encodeURIComponent(apiKey)}`;
   const res = await fetch(url);
   const data = await res.json();
   if (data.status && data.status !== 200) throw new Error(`WorldTides: ${data.error || "request failed"}`);
