@@ -116,8 +116,8 @@ no new API key or paid plan beyond what's already in use:
 1. ✅ **Barometric pressure** — implemented (screen-only Pressure row).
 2. ✅ **Wind-wave vs. swell split** — implemented (screen-only "wind chop"
    detail line under the Waves/Swell icon).
-3. ✅ **Hourly wave/swell height** — implemented (screen-only Wave (2h)
-   timeline row).
+3. ✅ **Hourly wave/swell height** — implemented (screen-only Wave (2h) and
+   Swell (2h) timeline rows, the latter also showing swell travel direction).
 4. ✅ **UV index** — implemented (screen-only badge in the Weather row).
 5. **WorldTides real sampled heights** — only benefits WorldTides-backed
    (non-QLD) locations, doubles WorldTides credit cost per location/day, so

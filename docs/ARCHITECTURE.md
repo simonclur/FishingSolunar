@@ -433,16 +433,24 @@ added as **screen-view only** features (never printed), so the laminated
   printed page's row count/height.
 - **Pressure row** (`pressure`, `screenOnly: true`) - `dailyPressure()`
   averages hourly `pressure_msl` (hPa) 6am-6pm local, same shape as
-  `dailySeaTemp()`/`dailyOceanCurrent()`. Colour-coded low->high via a new
-  `PRESSURE_SCALE`/`pressureStyle()` (same pattern as
-  `CURRENT_SPEED_SCALE`/`currentSpeedStyle()`), since falling/low pressure
-  is commonly associated with more fish activity.
-- **Wave (2h) timeline row** (`waveTimeline`, `screenOnly: true`) -
-  `hourlyWaveForDay()` extracts hourly `wave_height`/`swell_wave_height`/
-  `wind_wave_height` per day at a 2h interval; `waveTimelineHtml()` renders
-  it with the same `.wind-timeline`/`.wind-timeline-cell` classes (new
-  `.wave-timeline-bar` mini bar per interval) as the existing Wind/Current
-  timeline rows, so it lines up on the same time-of-day grid.
+  `dailySeaTemp()`/`dailyOceanCurrent()`. Colour-coded low (blue) -> high
+  (purple) via a new `PRESSURE_SCALE`/`pressureStyle()` (structurally the
+  same pattern as `CURRENT_SPEED_SCALE`/`currentSpeedStyle()`, but using
+  the standard meteorological blue->purple pressure-map convention rather
+  than the wind/current speed colours), since falling/low pressure is
+  commonly associated with more fish activity.
+- **Wave (2h) and Swell (2h) timeline rows** (`waveTimeline`/
+  `swellTimeline`, both `screenOnly: true`) - `hourlyWaveForDay()` extracts
+  hourly `wave_height`/`swell_wave_height`/`swell_wave_direction`/
+  `wind_wave_height` per day at a 2h interval. `waveTimelineHtml()` plots
+  whichever of wave/swell height is taller that hour as a small bar;
+  `swellTimelineHtml()` plots swell height specifically plus a small
+  travel-direction arrow (reusing `miniCurrentArrowSvg()`). Both use the
+  same `.wind-timeline`/`.wind-timeline-cell` classes (with a smaller
+  `.wave-timeline-value` value font, since two extra timeline rows made
+  the default timeline value size feel cramped) as the existing Wind/
+  Current timeline rows, so all timeline rows line up on the same
+  time-of-day grid.
 - **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
   parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
   existing swell line using the Marine API's daily `wind_wave_height_max`/

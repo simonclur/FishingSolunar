@@ -336,7 +336,8 @@ async function fetchMarine(lat, lon, startIso, endIso, tz) {
     `&daily=wave_height_max,wave_direction_dominant,wave_period_max,swell_wave_height_max,` +
     `swell_wave_direction_dominant,swell_wave_period_max,wind_wave_height_max,` +
     `wind_wave_direction_dominant,wind_wave_period_max&hourly=sea_surface_temperature,` +
-    `ocean_current_velocity,ocean_current_direction,wave_height,swell_wave_height,wind_wave_height` +
+    `ocean_current_velocity,ocean_current_direction,wave_height,swell_wave_height,` +
+    `swell_wave_direction,wind_wave_height` +
     `&start_date=${s}&end_date=${e}&timezone=${encodeURIComponent(tz)}`;
   let res = await fetch(build(startIso, endIso));
   if (!res.ok) {
@@ -574,6 +575,7 @@ function hourlyWaveForDay(marineHourly, isoDay, intervalHours) {
   const times = marineHourly.time;
   const waveH = marineHourly.wave_height;
   const swellH = marineHourly.swell_wave_height;
+  const swellDir = marineHourly.swell_wave_direction;
   const windWaveH = marineHourly.wind_wave_height;
   if (!waveH || !swellH) return [];
   const out = [];
@@ -581,7 +583,7 @@ function hourlyWaveForDay(marineHourly, isoDay, intervalHours) {
     if (!times[i].startsWith(isoDay)) continue;
     const hour = parseInt(times[i].slice(11, 13), 10);
     if (hour % step !== 0) continue;
-    out.push({ hour, wave: waveH[i], swell: swellH[i], windWave: windWaveH ? windWaveH[i] : null });
+    out.push({ hour, wave: waveH[i], swell: swellH[i], swellDir: swellDir ? swellDir[i] : null, windWave: windWaveH ? windWaveH[i] : null });
   }
   return out;
 }
@@ -636,7 +638,7 @@ async function cachedFetch(cacheKey, fetcher) {
 // well-shaped result to index into (all lookups already treat a missing
 // `wIdx`/`mIdx` as "no data for this day" and render "\u2014").
 const EMPTY_WEATHER = { daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], windspeed_10m_max: [], windspeed_10m_mean: [], windgusts_10m_max: [], winddirection_10m_dominant: [], sunrise: [], sunset: [], precipitation_sum: [], precipitation_probability_max: [], weathercode: [], uv_index_max: [] }, hourly: { time: [], windspeed_10m: [], winddirection_10m: [], pressure_msl: [] } };
-const EMPTY_MARINE = { daily: { time: [], wave_height_max: [], wave_direction_dominant: [], wave_period_max: [], swell_wave_height_max: [], swell_wave_direction_dominant: [], swell_wave_period_max: [], wind_wave_height_max: [], wind_wave_direction_dominant: [], wind_wave_period_max: [] }, hourly: { time: [], sea_surface_temperature: [], ocean_current_velocity: [], ocean_current_direction: [], wave_height: [], swell_wave_height: [], wind_wave_height: [] } };
+const EMPTY_MARINE = { daily: { time: [], wave_height_max: [], wave_direction_dominant: [], wave_period_max: [], swell_wave_height_max: [], swell_wave_direction_dominant: [], swell_wave_period_max: [], wind_wave_height_max: [], wind_wave_direction_dominant: [], wind_wave_period_max: [] }, hourly: { time: [], sea_surface_temperature: [], ocean_current_velocity: [], ocean_current_direction: [], wave_height: [], swell_wave_height: [], swell_wave_direction: [], wind_wave_height: [] } };
 
 async function buildPlan(settings) {
   const { lat, lon, start, key } = settings;
@@ -908,18 +910,19 @@ function currentSpeedStyle(speedKmh, isPrint) {
 // Barometric pressure (hPa) colour scale - screen-only Pressure row.
 // Anglers commonly treat falling/low pressure as favourable for fish
 // activity and high/stable pressure as neutral, so this is coloured as a
-// simple low->high band (not a literal "good/bad" claim - shown so a quick
-// day-to-day pressure comparison is visible at a glance) rather than
-// reusing the wind/current speed ramps, since pressure is a much narrower,
-// slower-moving value (typically 990-1030hPa) than either.
+// low->high gradient. Standard meteorological pressure maps use blue for
+// low pressure and red/purple for high pressure (e.g. OpenWeatherMap's
+// pressure layer) - this follows that same blue->purple convention rather
+// than reusing the wind/current speed ramps, since pressure is a much
+// narrower, slower-moving value (typically 990-1030hPa) than either.
 const PRESSURE_SCALE = [
-  { max: 1005, color: "#0064ff" },  // low pressure - blue
-  { max: 1013, color: "#00c7ff" },  // below-average - light blue
-  { max: 1018, color: "#b8ff61" },  // average - light green
-  { max: 1023, color: "#fffe00" },  // above-average - yellow
-  { max: Infinity, color: "#ff9600" }, // high pressure - orange
+  { max: 1005, color: "#0033cc" },  // low pressure - deep blue
+  { max: 1013, color: "#3399ff" },  // below-average - blue
+  { max: 1018, color: "#9966cc" },  // average - blue-violet
+  { max: 1023, color: "#8a2be2" },  // above-average - violet
+  { max: Infinity, color: "#5b0e91" }, // high pressure - deep purple
 ];
-const PRESSURE_WHITE_TEXT_MAX_INDEX = new Set([0, 1]);
+const PRESSURE_WHITE_TEXT_MAX_INDEX = new Set([0, 1, 2, 3, 4]);
 
 function pressureStageIndex(hpa) {
   for (let i = 0; i < PRESSURE_SCALE.length; i++) {
@@ -935,16 +938,14 @@ function pressureStyle(hpa) {
   return ` style="background-color:${PRESSURE_SCALE[idx].color};color:${textColor}"`;
 }
 
-// UV index colour scale - standard WHO UV index bands (Low/Moderate/
-// High/Very High/Extreme), reused as-is since this one *is* an official
-// international standard (unlike wind/current/pressure above, which are
-// this app's own choices).
+// UV index colour scale - standard WHO/EPA UV index bands and colours
+// (Low=green, Moderate=yellow, High=orange, Very High=red, Extreme=violet).
 const UV_SCALE = [
   { max: 3, color: "#00e600", label: "Low" },
   { max: 6, color: "#fffe00", label: "Moderate" },
   { max: 8, color: "#ff9600", label: "High" },
-  { max: 11, color: "#e66400", label: "Very High" },
-  { max: Infinity, color: "#b40032", label: "Extreme" },
+  { max: 11, color: "#ff0000", label: "Very High" },
+  { max: Infinity, color: "#8a2be2", label: "Extreme" },
 ];
 const UV_WHITE_TEXT_MAX_INDEX = new Set([3, 4]);
 
@@ -1576,7 +1577,32 @@ function waveTimelineHtml(d) {
     return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wave-timeline-bar-wrap"><div class="wave-timeline-bar" style="height:${barH.toFixed(1)}px"></div></div>` +
-      `<div class="wind-timeline-speed">${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `<div class="wind-timeline-speed wave-timeline-value">${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `</div>`;
+  }).join("");
+  return `<div class="wind-timeline">${cells}</div>`;
+}
+
+// Screen-only "Swell" timeline row: same layout/interval convention as the
+// Wave timeline above, but plots hourly swell height + a small travel-
+// direction arrow (mirrors miniCurrentArrowSvg()) instead of the
+// wave-or-swell-whichever-taller bar - lets building/backing-off
+// groundswell *and* its direction be tracked hour-by-hour, complementing
+// the daily Waves/Swell summary row. Screen-only, print unaffected.
+function swellTimelineHtml(d) {
+  if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
+  const hours = d.waveHourly;
+  const maxH = Math.max(0.3, ...hours.map((h) => h.swell || 0));
+  const barMaxPx = 22;
+  const cells = hours.map((h) => {
+    const hh = String(h.hour).padStart(2, "0");
+    const leftPct = (h.hour / 24) * 100;
+    const val = h.swell;
+    const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
+    return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
+      `<div class="wind-timeline-hour">${hh}</div>` +
+      (h.swellDir != null ? miniCurrentArrowSvg(h.swellDir, val) : `<div class="wave-timeline-bar-wrap"><div class="wave-timeline-bar" style="height:${barH.toFixed(1)}px"></div></div>`) +
+      `<div class="wind-timeline-speed wave-timeline-value">${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
   return `<div class="wind-timeline">${cells}</div>`;
@@ -1609,6 +1635,7 @@ const ROW_SHORT_ICONS = {
   tideCurve: "\u{1F30A}\u{1F4C8}", // wave + chart
   waves: "\u{1F30A}",
   waveTimeline: "\u{1F30A}",
+  swellTimeline: "\u{1F30A}\u2197\uFE0F",
   waveEnergy: "\u{26A1}",
   seaTemp: "\u{1F30A}\u{1F321}\u{FE0F}",
   weather: "\u{26C5}",
@@ -1650,6 +1677,11 @@ const ROW_DEFS = [
     key: "waveTimeline", label: "Wave", cellClass: "wind-timeline-cell-wrap", screenOnly: true,
     labelSub: { screen: "(2h)" },
     render: (d) => waveTimelineHtml(d),
+  },
+  {
+    key: "swellTimeline", label: "Swell", cellClass: "wind-timeline-cell-wrap", screenOnly: true,
+    labelSub: { screen: "(2h)" },
+    render: (d) => swellTimelineHtml(d),
   },
   {
     key: "waveEnergy", label: "Wave energy",
