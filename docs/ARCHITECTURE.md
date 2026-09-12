@@ -585,6 +585,19 @@ boat-launch safety/comfort read even on the laminated sheet:
   (a smaller wave line plus an orange lightning bolt) for Wave energy.
   New `.row-label-short-icon`/`.wind-gust-*`/`.wave-swirl-*`/
   `.wave-energy-bolt` CSS added; other rows' emoji glyphs are unchanged.
+- **Forced-landscape print now works on iOS Safari** - iOS Safari ignores
+  `@page { size: A4 landscape }` and always prints portrait regardless,
+  silently reverting to the device default; this clipped/rescaled the
+  print tables on iPhone. Fixed by declaring `@page { size: A4 portrait }`
+  (which every browser, including iOS Safari, honours) and rotating the
+  actual landscape table content 90deg to fill that portrait page via a
+  new `.print-page-rotate` wrapper (`transform: rotate(90deg)` with
+  `transform-origin: top left`, sized/positioned to exactly fill the
+  200mm x 287mm printable area). `.print-page` is now a fixed-size,
+  `overflow: hidden`, `position: relative` box that clips to the page;
+  each print page's heading + table live inside the rotated wrapper.
+  Verified via Puppeteer PDF export (`preferCSSPageSize: true`) that both
+  print pages render full-bleed and correctly oriented.
 - **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
   parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
   existing swell line using the Marine API's daily `wind_wave_height_max`/

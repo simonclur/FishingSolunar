@@ -2140,11 +2140,18 @@ function render(days, settings, tideMeta) {
   for (const half of [days.slice(0, 7), days.slice(7, 14)]) {
     const page = document.createElement("section");
     page.className = "print-page";
+    // iOS Safari ignores `@page { size: landscape }` and always prints
+    // portrait, so the page itself stays portrait and this inner wrapper
+    // is rotated 90deg to fill it with landscape-oriented content (works
+    // the same on desktop browsers, which also honour plain portrait pages).
+    const rotate = document.createElement("div");
+    rotate.className = "print-page-rotate";
     const heading = document.createElement("h2");
     heading.className = "print-heading";
     heading.textContent = `${settings.name} \u2014 ${half[0].dayMonth} to ${half[half.length - 1].dayMonth}`;
-    page.appendChild(heading);
-    page.appendChild(buildTable(half, "planner-table print-table", scales, printRowToggles));
+    rotate.appendChild(heading);
+    rotate.appendChild(buildTable(half, "planner-table print-table", scales, printRowToggles));
+    page.appendChild(rotate);
     printWrap.appendChild(page);
   }
   root.appendChild(printWrap);
