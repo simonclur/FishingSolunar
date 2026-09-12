@@ -419,11 +419,13 @@ so 12 rows (up from 11) still fit on a single A4-landscape page per
 future row addition should re-check the printed PDF page count the same
 way (see "Testing method" notes elsewhere in this doc).
 
-### Screen-only rows (Pressure, Wave timeline, wind-wave detail, UV)
+### Screen-only rows (Pressure, Wave/Swell timelines, UV) + printed Wind chop row
 
-Four extra data points from `docs/DATA_CATALOG.md`'s "Part B" list were
-added as **screen-view only** features (never printed), so the laminated
-2-page A4 layout and page count are completely unaffected:
+Several extra data points from `docs/DATA_CATALOG.md`'s "Part B" list were
+added. Most are **screen-view only** (never printed), so the laminated
+2-page A4 layout and page count are unaffected by them; one - Wind chop -
+was deliberately made a **printed** row since it's a quick, useful
+boat-launch safety/comfort read even on the laminated sheet:
 
 - **`ROW_DEFS` `screenOnly: true` flag** - `buildTable()` does
   `if (row.screenOnly && isPrint) continue;`, skipping the row's `<tr>`
@@ -439,18 +441,24 @@ added as **screen-view only** features (never printed), so the laminated
   the standard meteorological blue->purple pressure-map convention rather
   than the wind/current speed colours), since falling/low pressure is
   commonly associated with more fish activity.
+- **Wind chop (2h screen / 4h print) timeline row** (`windWaveTimeline`,
+  **printed**, not `screenOnly`) - `windWaveTimelineHtml()` plots hourly
+  `wind_wave_height` (the locally wind-driven component of sea state,
+  separate from swell), following the same 2h-screen/4h-print interval
+  convention as the Wind/Current timeline rows.
 - **Wave (2h) and Swell (2h) timeline rows** (`waveTimeline`/
   `swellTimeline`, both `screenOnly: true`) - `hourlyWaveForDay()` extracts
   hourly `wave_height`/`swell_wave_height`/`swell_wave_direction`/
   `wind_wave_height` per day at a 2h interval. `waveTimelineHtml()` plots
   whichever of wave/swell height is taller that hour as a small bar;
   `swellTimelineHtml()` plots swell height specifically plus a small
-  travel-direction arrow (reusing `miniCurrentArrowSvg()`). Both use the
-  same `.wind-timeline`/`.wind-timeline-cell` classes (with a smaller
-  `.wave-timeline-value` value font, since two extra timeline rows made
-  the default timeline value size feel cramped) as the existing Wind/
-  Current timeline rows, so all timeline rows line up on the same
-  time-of-day grid.
+  travel-direction arrow (reusing `miniCurrentArrowSvg()`). All three
+  timeline rows (Wind chop, Wave, Swell) share the same `.wind-timeline`/
+  `.wind-timeline-cell` classes and a smaller `.wave-timeline-value` value
+  font (reduced twice - once when the Swell row was added, once more when
+  the Wind chop row made three timeline rows total feel cramped) as the
+  existing Wind/Current timeline rows, so all timeline rows line up on the
+  same time-of-day grid.
 - **Wind-wave vs. swell detail** - `waveIconSvg()` gained an `isPrint`
   parameter; when `!isPrint` it adds a `.wind-wave-detail` line under the
   existing swell line using the Marine API's daily `wind_wave_height_max`/
@@ -459,10 +467,13 @@ added as **screen-view only** features (never printed), so the laminated
   distinction data-driven instead of just illustrative.
 - **UV index badge** - the `weather` row itself still always renders (it's
   printed), but its `render()` conditionally appends `uvBadgeHtml()` only
-  `!isPrint`. Colour bands follow the standard WHO UV index scale (`UV_SCALE`).
+  `!isPrint`. Colour bands follow the standard WHO/EPA UV index scale
+  (`UV_SCALE`: green/yellow/orange/red/violet).
 
-All four reuse `ROW_SHORT_ICONS` entries for the collapsed-label view like
-every other row.
+All new rows reuse `ROW_SHORT_ICONS` entries for the collapsed-label view
+like every other row. Adding the printed Wind chop row was re-checked
+against the printed PDF page count (still exactly 2 pages/7-day half) per
+the print-page-count invariant noted above.
 
 ### Reference tide height ("planning line")
 

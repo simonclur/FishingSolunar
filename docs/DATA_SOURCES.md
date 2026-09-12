@@ -32,8 +32,9 @@ every API used must support CORS for browser `fetch()` calls.
   power a screen-only "wind chop" detail line, distinguishing locally
   wind-driven chop from groundswell).
 - Also fetched hourly: `wave_height`, `swell_wave_height`,
-  `swell_wave_direction`, `wind_wave_height` for screen-only Wave (2h) and
-  Swell (2h) timeline rows, mirroring the existing Wind/Current timeline
+  `swell_wave_direction` for screen-only Wave (2h) and Swell (2h) timeline
+  rows, and `wind_wave_height` for a **printed** Wind chop (2h screen /
+  4h print) timeline row, mirroring the existing Wind/Current timeline
   rows.
 - Sea surface temperature is only available hourly (`hourly=sea_surface_temperature`);
   the app averages the daytime hours (6am–6pm) per day for a daily figure.

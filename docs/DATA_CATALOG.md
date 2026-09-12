@@ -42,7 +42,8 @@ values have been observed to go blank after ~9–10 days ahead in practice.
 | hourly `ocean_current_velocity`, `ocean_current_direction` | Current timeline row (2h/4h speed pill + direction arrow) |
 | `wave_direction_dominant`, `wave_period_max` | Fetched but not currently shown separately from swell |
 | `wind_wave_height_max`, `wind_wave_direction_dominant`, `wind_wave_period_max` (daily) | **Screen-only**: extra "wind chop" detail line under the Waves/Swell icon, shown alongside the swell line so the wind-driven vs. swell components are distinguishable |
-| hourly `wave_height`, `swell_wave_height`, `wind_wave_height` | **Screen-only** Wave (2h) timeline row, mirroring the Wind/Current timeline rows |
+| hourly `wave_height`, `swell_wave_height`, `swell_wave_direction` | **Screen-only** Wave (2h) and Swell (2h) timeline rows, mirroring the Wind/Current timeline rows |
+| hourly `wind_wave_height` | **Printed** Wind chop (2h screen / 4h print) timeline row, same convention as the Wind/Current timeline rows |
 
 ### 3. WorldTides API (fallback tide source)
 

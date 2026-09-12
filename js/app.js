@@ -1608,7 +1608,34 @@ function swellTimelineHtml(d) {
   return `<div class="wind-timeline">${cells}</div>`;
 }
 
-// Small original fish silhouette shown next to the "Solunar" row label, to
+// "Wind chop" timeline row: hourly wind-wave height (the locally
+// wind-driven component of sea state, separate from swell - see
+// waveIconSvg()'s wind-wave detail line for the daily-max equivalent).
+// Unlike the Wave/Swell timeline rows above, this one *is* printed (at a
+// coarser 4h interval, matching the Wind/Current timeline rows' print
+// convention) since wind chop is a quick, useful read for boat-launch
+// safety/comfort even on the laminated sheet.
+function windWaveTimelineHtml(d, intervalHours) {
+  if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
+  const step = intervalHours || 2;
+  const hours = d.waveHourly.filter((h) => h.hour % step === 0);
+  const maxH = Math.max(0.3, ...hours.map((h) => h.windWave || 0));
+  const barMaxPx = 22;
+  const cells = hours.map((h) => {
+    const hh = String(h.hour).padStart(2, "0");
+    const leftPct = (h.hour / 24) * 100;
+    const val = h.windWave;
+    const barH = val != null ? Math.max(2, (val / maxH) * barMaxPx) : 0;
+    return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
+      `<div class="wind-timeline-hour">${hh}</div>` +
+      `<div class="wave-timeline-bar-wrap"><div class="wave-timeline-bar" style="height:${barH.toFixed(1)}px"></div></div>` +
+      `<div class="wind-timeline-speed wave-timeline-value">${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `</div>`;
+  }).join("");
+  return `<div class="wind-timeline">${cells}</div>`;
+}
+
+
 // make it immediately clear at a glance that this star rating is a
 // fishing-activity ("fishability") score rather than a generic moon-phase
 // indicator. Simple flat single-colour shape (body + tail + eye cut-out),
@@ -1634,6 +1661,7 @@ const ROW_SHORT_ICONS = {
   tideLow: "\u{2B07}\u{FE0F}\u{1F30A}", // down arrow + wave
   tideCurve: "\u{1F30A}\u{1F4C8}", // wave + chart
   waves: "\u{1F30A}",
+  windWaveTimeline: "\u{1F4A8}\u{1F30A}",
   waveTimeline: "\u{1F30A}",
   swellTimeline: "\u{1F30A}\u2197\uFE0F",
   waveEnergy: "\u{26A1}",
@@ -1672,6 +1700,11 @@ const ROW_DEFS = [
   {
     key: "waves", label: "Waves / Swell", cellClass: "wave-icon-cell",
     render: (d, scales, isPrint) => waveIconSvg(d, scales?.waveScale, isPrint),
+  },
+  {
+    key: "windWaveTimeline", label: "Wind chop", cellClass: "wind-timeline-cell-wrap",
+    labelSub: { screen: "(2h)", print: "(4h)" },
+    render: (d, scales, isPrint) => windWaveTimelineHtml(d, isPrint ? 4 : 2),
   },
   {
     key: "waveTimeline", label: "Wave", cellClass: "wind-timeline-cell-wrap", screenOnly: true,
