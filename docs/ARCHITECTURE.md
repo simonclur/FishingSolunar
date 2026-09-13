@@ -932,7 +932,13 @@ change).
   solid mid-width barb, and a narrower core - and is legible even in
   black-and-white print since the layering is line-style/fill based, not
   colour based. Falls back to `windSpeed` for gust/avg if either isn't
-  supplied.
+  supplied. **Fix**: the previous commit still drew an opaque white
+  `.wind-circle` disc over the speed number, which unintentionally
+  masked almost the entire length of all three barbs (only tiny slivers
+  near the ring survived) - the circle is now removed, and the speed
+  number instead gets a white text-stroke halo (`paint-order: stroke
+  fill` in `.wind-speed-label`) so it stays legible while the barbs
+  show through underneath it.
 
 ## Offline support
 

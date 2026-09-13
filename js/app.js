@@ -1645,7 +1645,6 @@ function windIconSvg(windDir, windSpeed, windAvg, windGust) {
     `<circle cx="${cx}" cy="${cy}" r="${ringR}" class="wind-ring"></circle>` +
     ticks +
     `<g transform="translate(${cx},${cy}) rotate(${fromDeg})">${gustBarb}${maxBarb}${avgBarb}</g>` +
-    `<circle cx="${cx}" cy="${cy}" r="${centerR}" class="wind-circle"></circle>` +
     `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" class="wind-speed-label">${Math.round(windSpeed)}</text>` +
     `</svg>`;
 }
