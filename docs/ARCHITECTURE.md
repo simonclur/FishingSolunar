@@ -915,34 +915,27 @@ change).
   speed label underneath.
 
 - **Main Wind icon shows Avg/Max/Gust as three nested tapered barbs** -
-  several earlier attempts (radial box-whisker; overlapping same-length
-  triangles distinguished by dashed lines/thin strokes) proved too
-  subtle or fiddly to read at this icon's small size, and worse - dashed
-  lines and thin (~1px) strokes get anti-aliased away almost entirely
-  once actually rasterised down to the icon's true ~40px render size
-  (verified by screenshotting at `deviceScaleFactor: 1`, i.e. the same
-  pixel density the icon actually renders at on screen/print, not a
-  zoomed-in high-DPI capture which hid this issue). `windIconSvg()` now
-  draws the *same* tail-to-tip tapered triangle shape used for a single
-  wind speed - spanning the full compass diameter, thick flat tail at
-  the ring edge on the side the wind is coming FROM, tapering to a point
-  on the opposite edge - three times at the same position/rotation, with
-  only the **tail width** varying per stat (4..15px, scaled by speed/60):
-  a light-grey solid fill for Gust (`.wind-barb-gust`, widest, drawn
-  first/behind - the outer envelope), a solid black fill for Max
-  (`.wind-barb-max`, drawn on top with a white border so the Gust/Max
-  boundary stays a visible ring even downscaled), and a white fill with
-  black border for Avg (`.wind-barb-avg`, narrowest, drawn last/on top,
-  reading as a hollow "core" nested inside the black Max barb). Using
-  solid fills + `non-scaling-stroke` borders (rather than dashes/thin
-  strokes) between each nested layer is what actually survives
-  rasterisation - confirmed by screenshotting at the icon's real render
-  size and seeing all three distinct layers, not a single blob. Falls
-  back to `windSpeed` for gust/avg if either isn't supplied. (An earlier
-  fix in this same series also removed an opaque white `.wind-circle`
-  disc that had been drawn over the speed number, which was separately
-  masking most of the barb length; the speed number now gets a white
-  text-stroke halo instead via `paint-order: stroke fill`.)
+  an earlier radial box-whisker attempt was too subtle to read at this
+  icon's small size. `windIconSvg()` now draws the *same* tail-to-tip
+  tapered triangle shape used for a single wind speed - spanning the
+  full compass diameter, thick flat tail at the ring edge on the side
+  the wind is coming FROM, tapering to a point on the opposite edge -
+  three times at the same position/rotation, with only the **tail
+  width** varying per stat (3..12px, scaled by speed/60): a wide dashed
+  outline for Gust (`.wind-barb-gust`, drawn first/behind - the outer
+  envelope), a solid black barb for Max (`.wind-barb-max`, drawn on
+  top), and a narrow white-outlined barb for Avg (`.wind-barb-avg`,
+  drawn last/on top, reading as a hollow "core" nested inside the black
+  Max barb). Falls back to `windSpeed` for gust/avg if either isn't
+  supplied. (An earlier fix in this same series also removed an opaque
+  white `.wind-circle` disc that had been drawn over the speed number,
+  which was masking most of the barb length; the speed number now gets
+  a white text-stroke halo instead via `paint-order: stroke fill`.) Note:
+  a solid-fill variant was tried at one point out of concern that dashed
+  lines/thin strokes might not survive rasterisation at the icon's small
+  render size, but visual confirmation directly in the browser (rather
+  than a zoomed screenshot) showed the dashed/thin-stroke version reads
+  clearly at actual size, so that's what shipped.
 
 ## Offline support
 

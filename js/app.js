@@ -1610,23 +1610,17 @@ function windIconSvg(windDir, windSpeed, windAvg, windGust) {
   // Tapered barb triangle, spanning the whole compass diameter tail-to-tip
   // (thick flat tail at the ring edge on the side the wind is coming FROM,
   // tapering to a point at the opposite ring edge) - same shape/position
-  // for all three stats, only the **tail width** varies with speed, drawn
-  // as three concentric solid triangles (widest/Gust behind, then Max,
-  // then narrowest/Avg on top) rather than distinguishing them by dashed
-  // lines or thin strokes - those get anti-aliased away to nothing once
-  // the icon is rasterised down to its actual ~40px on-screen/print size,
-  // collapsing into what just looks like one solid barb. Solid fills with
-  // a `non-scaling-stroke` white border between each layer survive
-  // rasterisation and stay visually distinct at any zoom level:
-  //   - Gust: widest, light-grey fill (`.wind-barb-gust`) - the outer
-  //     envelope of how gusty it got
-  //   - Max: solid black (`.wind-barb-max`), drawn on top of Gust with a
-  //     white border so the Gust/Max boundary stays a visible ring even
-  //     when downscaled
-  //   - Avg: narrowest, white fill with a black border (`.wind-barb-avg`)
-  //     drawn last/on top, reading as a hollow "core" nested inside the
-  //     black Max barb
-  const tailW = (speed) => 4 + Math.min(speed / maxSpeed, 1) * 11; // 4..15
+  // for all three stats, only the **tail width** varies with speed. Drawn
+  // as three concentric triangles nested inside one another, widest to
+  // narrowest, distinguished by line style (confirmed legible at the
+  // icon's actual on-screen/print render size via the integrated browser,
+  // not just a zoomed-in capture):
+  //   - Gust: widest, dashed outline only (drawn first/behind), so it
+  //     reads as "the outer envelope of how gusty it got"
+  //   - Max: solid black, medium width, drawn on top of Gust
+  //   - Avg: narrowest, white outline, drawn last/on top so it shows as a
+  //     "core" nested inside the black Max barb
+  const tailW = (speed) => 3 + Math.min(speed / maxSpeed, 1) * 9; // 3..12
   const tailY = -(ringR - 1);
   const tipY = ringR - 1;
   const barbShape = (w, cls) => {
