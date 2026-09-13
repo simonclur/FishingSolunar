@@ -914,28 +914,24 @@ change).
   short, thin one at a glance, without needing to read the numeric
   speed label underneath.
 
-- **Main Wind icon shows Avg/Max/Gust as a true box-and-whisker plot** -
-  an earlier version tried encoding Avg/Max/Gust as three overlapping
-  same-length triangles of different width/colour, but at this icon's
-  small size the colour/width differences were too subtle to read as
-  anything but "one dark blob". `windIconSvg()` now draws a real
-  box-and-whisker instead, along the radial line pointing at the compass
-  bearing the wind is coming FROM, with **distance from the centre
-  circle encoding speed** (not just width/shade): a solid black box
-  (`.wind-barb-max`) spans from the centre circle's edge out to Max, a
-  thin whisker line + end-cap (`.wind-barb-gust`) continues further out
-  from Max to Gust (only drawn when Gust > Max), and a white tick line
-  (`.wind-barb-avg`) crosses the box wherever Avg falls along it -
-  visually identical in spirit to a statistical box-whisker plot, just
-  applied radially on the compass rather than on a normal axis. This
-  makes gustiness ("how much further the whisker reaches past the box")
-  and the average-vs-max relationship ("where the white tick sits inside
-  the box") both readable at a glance, including in black-and-white
-  print. A `minR` floor ensures the box/cap stays visible even at low
-  wind speed (the initial version scaled the box all the way down to
-  zero-height at low speed, making it invisible/indistinguishable from
-  "no box at all" - a real bug, not just a rendering quirk). Falls back
-  to `windSpeed` for gust/avg if either isn't
+- **Main Wind icon shows Avg/Max/Gust as three nested tapered barbs** -
+  two earlier attempts (radial box-whisker, and overlapping same-length
+  triangles) proved too subtle or fiddly to read at this icon's small
+  size. `windIconSvg()` now draws the *same* tail-to-tip tapered
+  triangle shape used for a single wind speed - spanning the full
+  compass diameter, thick flat tail at the ring edge on the side the
+  wind is coming FROM, tapering to a point on the opposite edge - three
+  times at the same position/rotation, with only the **tail width**
+  varying per stat (3..12px, scaled by speed/60 same as before): a
+  wide dashed outline for Gust (`.wind-barb-gust`, drawn first/behind,
+  reads as "the outer envelope"), a solid black barb for Max
+  (`.wind-barb-max`, drawn on top), and a narrow white-outlined barb for
+  Avg (`.wind-barb-avg`, drawn last, nested visibly inside the black
+  Max barb). This directly matches how a real box-whisker style plot
+  looks when applied to a wind barb - a dashed wide outer boundary, a
+  solid mid-width barb, and a narrower core - and is legible even in
+  black-and-white print since the layering is line-style/fill based, not
+  colour based. Falls back to `windSpeed` for gust/avg if either isn't
   supplied.
 
 ## Offline support

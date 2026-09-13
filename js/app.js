@@ -1597,50 +1597,39 @@ function waveIconSvg(d, waveScale, isPrint) {
 function windIconSvg(windDir, windSpeed, windAvg, windGust) {
   if (windSpeed == null) return '<span class="muted">\u2014</span>';
   const fromDeg = windDir != null ? windDir : 0; // compass direction the wind comes FROM
-  const maxSpeed = 60; // km/h, above which marks max out visually
+  const maxSpeed = 60; // km/h, above which the barb maxes out visually
   const cx = 20, cy = 20;
   const ringR = 15;
-  const centerR = 7.5; // speed circle radius - marks start just outside this
-  const minR = centerR + 1.5; // smallest radius a mark can sit at, so a
-  // calm/zero speed still shows a visible sliver of box rather than
-  // vanishing into the centre circle's edge.
+  const centerR = 7.5; // speed circle radius, also where the tip is hidden
 
   // Gust and Avg default to windSpeed (max) if not supplied so the icon
   // still renders sensibly when only a single speed value is available.
   const gustSpeed = Math.max(windGust ?? windSpeed, windSpeed);
   const avgSpeed = Math.min(windAvg ?? windSpeed, windSpeed);
 
-  // Box-and-whisker plot, drawn along the radial axis pointing towards
-  // the tail (the compass bearing the wind is coming FROM), from the
-  // centre circle's edge outward: distance-from-centre encodes speed, so
-  // Avg/Max/Gust are visually separated by *how far out* they reach, not
-  // just by colour/width (an earlier attempt using only width/shade was
-  // unreadable at this icon's small size). The full centreR..ringR gap
-  // is used for this (clamped to at least `minR` out) so the box is
-  // always clearly visible even at low/zero speed:
-  //   - a filled black "box" spans from `minR` out to Max, with a solid
-  //     cap line drawn right at its outer (Max) edge so the box has a
-  //     crisp visible top even when Gust ~= Max
-  //   - a thin whisker line continues from Max out to Gust (only drawn
-  //     when Gust is meaningfully greater than Max), capped with a short
-  //     perpendicular tick (classic box-whisker "cap")
-  //   - Avg is a white tick mark drawn across the box, sitting wherever
-  //     along the box its speed falls (nearer the centre = calmer avg
-  //     relative to the day's max/gust spread)
-  const rScale = (speed) => Math.max(minR, centerR + Math.min(speed / maxSpeed, 1) * (ringR - centerR));
-  const rMax = rScale(windSpeed);
-  const rGust = rScale(gustSpeed);
-  const rAvg = Math.min(rScale(avgSpeed), rMax);
-  const boxHalfW = 4.5;
-  const capHalfW = 3;
-
-  const box = `<rect x="${-boxHalfW}" y="${(-rMax).toFixed(1)}" width="${(boxHalfW * 2).toFixed(1)}" height="${(rMax - centerR).toFixed(1)}" class="wind-barb wind-barb-max"></rect>` +
-    `<line x1="${-capHalfW}" y1="${(-rMax).toFixed(1)}" x2="${capHalfW}" y2="${(-rMax).toFixed(1)}" class="wind-barb wind-barb-max-cap"></line>`;
-  const whisker = rGust > rMax + 0.5
-    ? `<line x1="0" y1="${(-rMax).toFixed(1)}" x2="0" y2="${(-rGust).toFixed(1)}" class="wind-barb wind-barb-gust"></line>` +
-      `<line x1="${-capHalfW}" y1="${(-rGust).toFixed(1)}" x2="${capHalfW}" y2="${(-rGust).toFixed(1)}" class="wind-barb wind-barb-gust"></line>`
-    : "";
-  const avgTick = `<line x1="${-boxHalfW}" y1="${(-rAvg).toFixed(1)}" x2="${boxHalfW}" y2="${(-rAvg).toFixed(1)}" class="wind-barb wind-barb-avg"></line>`;
+  // Tapered barb triangle, spanning the whole compass diameter tail-to-tip
+  // (thick flat tail at the ring edge on the side the wind is coming FROM,
+  // tapering to a point at the opposite ring edge) - same shape/position
+  // for all three stats, only the **tail width** varies with speed. This
+  // reads far more clearly at a glance than the earlier radial box-whisker
+  // attempt (which needed distance-from-centre to encode speed and was too
+  // subtle/vanished at low speed): here Gust/Max/Avg are three concentric
+  // triangles nested inside one another, widest to narrowest -
+  //   - Gust: widest, dashed outline only (drawn first/behind), so it
+  //     reads as "the outer envelope of how gusty it got"
+  //   - Max: solid black, medium width, drawn on top of Gust
+  //   - Avg: narrowest, white outline, drawn last/on top so it shows as a
+  //     "core" nested inside the black Max barb
+  const tailW = (speed) => 3 + Math.min(speed / maxSpeed, 1) * 9; // 3..12
+  const tailY = -(ringR - 1);
+  const tipY = ringR - 1;
+  const barbShape = (w, cls) => {
+    const halfW = w / 2;
+    return `<polygon points="${-halfW.toFixed(1)},${tailY} ${halfW.toFixed(1)},${tailY} 0,${tipY}" class="${cls}"></polygon>`;
+  };
+  const gustBarb = barbShape(tailW(gustSpeed), "wind-barb wind-barb-gust");
+  const maxBarb = barbShape(tailW(windSpeed), "wind-barb wind-barb-max");
+  const avgBarb = barbShape(tailW(avgSpeed), "wind-barb wind-barb-avg");
 
   // Compass ring + fixed (unrotated) cardinal tick marks/labels, giving an
   // absolute frame of reference independent of the wind direction itself.
@@ -1655,7 +1644,7 @@ function windIconSvg(windDir, windSpeed, windAvg, windGust) {
   return `<svg class="wind-icon-svg" viewBox="0 0 40 40" role="img" aria-label="Wind direction and speed">` +
     `<circle cx="${cx}" cy="${cy}" r="${ringR}" class="wind-ring"></circle>` +
     ticks +
-    `<g transform="translate(${cx},${cy}) rotate(${fromDeg})">${box}${whisker}${avgTick}</g>` +
+    `<g transform="translate(${cx},${cy}) rotate(${fromDeg})">${gustBarb}${maxBarb}${avgBarb}</g>` +
     `<circle cx="${cx}" cy="${cy}" r="${centerR}" class="wind-circle"></circle>` +
     `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" class="wind-speed-label">${Math.round(windSpeed)}</text>` +
     `</svg>`;
