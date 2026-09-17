@@ -9,6 +9,7 @@ const LS_KEYS = {
   lat: "fishingSolunar.lat",
   lon: "fishingSolunar.lon",
   start: "fishingSolunar.startDate",
+  startAuto: "fishingSolunar.startDateAuto",
   key: "fishingSolunar.worldTidesKey",
   refHeight: "fishingSolunar.refTideHeight",
   rowLabelsCollapsed: "fishingSolunar.rowLabelsCollapsed",
@@ -250,12 +251,24 @@ function $(id) { return document.getElementById(id); }
 
 // ---------- settings persistence ----------
 
+// "Auto" start date defaults on (missing key == "1") so a first-time visit,
+// or any visit where the user has never opted into a fixed/custom start
+// date, always plans from today - including when the page is re-opened
+// later and would otherwise just replay whatever start date happened to be
+// saved from a previous visit. Only an explicit "0" (the user unticking the
+// checkbox) switches to the saved literal date in `start`.
+function isStartDateAuto() {
+  return localStorage.getItem(LS_KEYS.startAuto) !== "0";
+}
+
 function loadSettings() {
+  const startAuto = isStartDateAuto();
   return {
     name: localStorage.getItem(LS_KEYS.name) || window.LOCATION_PRESETS[0].name,
     lat: parseFloat(localStorage.getItem(LS_KEYS.lat) ?? window.LOCATION_PRESETS[0].lat),
     lon: parseFloat(localStorage.getItem(LS_KEYS.lon) ?? window.LOCATION_PRESETS[0].lon),
-    start: localStorage.getItem(LS_KEYS.start) || isoDate(new Date()),
+    start: startAuto ? isoDate(new Date()) : (localStorage.getItem(LS_KEYS.start) || isoDate(new Date())),
+    startAuto,
     key: localStorage.getItem(LS_KEYS.key) || "",
   };
 }
@@ -264,7 +277,11 @@ function saveSettings(s) {
   localStorage.setItem(LS_KEYS.name, s.name);
   localStorage.setItem(LS_KEYS.lat, String(s.lat));
   localStorage.setItem(LS_KEYS.lon, String(s.lon));
-  localStorage.setItem(LS_KEYS.start, s.start);
+  localStorage.setItem(LS_KEYS.startAuto, s.startAuto ? "1" : "0");
+  // Only persist the literal date as the "remembered custom start date" when
+  // auto mode is off - otherwise a stale date saved while auto was on could
+  // resurface later if the user unticks the checkbox.
+  if (!s.startAuto) localStorage.setItem(LS_KEYS.start, s.start);
   localStorage.setItem(LS_KEYS.key, s.key);
 }
 
@@ -2334,11 +2351,17 @@ function populatePresets() {
 }
 
 function currentFormSettings() {
+  const startAuto = $("startDateAuto").checked;
+  // In auto mode, always plan from today regardless of whatever date is
+  // sitting in the (disabled) date field - covers the case where the tab
+  // was left open/cached across midnight and `refresh()` is re-run later.
+  const start = startAuto ? isoDate(new Date()) : $("startDate").value;
   return {
     name: $("locationName").value.trim(),
     lat: parseFloat($("lat").value),
     lon: parseFloat($("lon").value),
-    start: $("startDate").value,
+    start,
+    startAuto,
     key: $("worldTidesKey").value.trim(),
   };
 }
@@ -2398,7 +2421,14 @@ function init() {
   $("lat").value = saved.lat;
   $("lon").value = saved.lon;
   $("startDate").value = saved.start;
+  $("startDateAuto").checked = saved.startAuto;
+  $("startDate").disabled = saved.startAuto;
   $("worldTidesKey").value = saved.key;
+
+  $("startDateAuto").addEventListener("change", () => {
+    $("startDate").disabled = $("startDateAuto").checked;
+    if ($("startDateAuto").checked) $("startDate").value = isoDate(new Date());
+  });
 
   // Print-row inclusion checkboxes: one per ROW_DEFS row (built
   // dynamically, not hardcoded, so any future new row automatically gets
