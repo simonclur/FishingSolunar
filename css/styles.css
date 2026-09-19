@@ -361,6 +361,47 @@ table.planner-table {
 .tide-hover-tooltip--flip { transform: translate(calc(-100% - 4px), -130%); }
 .tide-curve-plot[data-tide-hover] { cursor: crosshair; }
 
+/* "Now" indicator on today's Tide curve column (screen only): a solid
+   line + dot at the current time, plus a small floating label showing the
+   live interpolated tide height - visually distinct from the hover
+   readout above (red vs the hover's plain grey/blue) since both can be
+   visible at once, and kept in sync on a timer by updateNowHighlights()
+   rather than baked in at render time, so it keeps advancing (and the
+   height keeps updating) while the tab stays open, even against a
+   cached/stale-data render. Hidden by default; shown only for whichever
+   single day column is actually "today". */
+.tide-now-line {
+  position: absolute; top: 0; bottom: 0; width: 2px; background: var(--now-accent, #d0392b);
+  opacity: 0.75; pointer-events: none; display: none; z-index: 1;
+}
+.tide-now-dot {
+  position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%; background: var(--now-accent, #d0392b); border: 1px solid #fff;
+  box-shadow: 0 0 0 1px var(--now-accent, #d0392b); pointer-events: none; display: none; z-index: 2;
+}
+.tide-now-label {
+  position: absolute; transform: translate(4px, -130%); white-space: nowrap;
+  background: var(--now-accent, #d0392b); color: #fff; font-size: 0.68rem; font-weight: 700;
+  padding: 0.15rem 0.4rem; border-radius: 0.3rem; pointer-events: none;
+  display: none; z-index: 2;
+}
+.tide-now-label--flip { transform: translate(calc(-100% - 4px), -130%); }
+
+/* Current 2h/4h timeline highlight strip (screen only): a precisely
+   `step`-hours-wide overlay behind a timeline row's cells, positioned/sized
+   exactly like the coloured background strips (timelineGradientBgStrips())
+   rather than styling `.wind-timeline-cell` itself - that cell is a
+   fixed-width icon/label box wider than one real interval's pixel span at
+   typical column widths, so highlighting it directly visually read as
+   spanning roughly twice the actual interval. Kept in sync (position,
+   width, and today/not-today visibility) by the updateNowHighlights()
+   timer alongside the tide "now" marker above. */
+.wind-timeline-now {
+  position: absolute; top: 0; bottom: 0; pointer-events: none; display: none;
+  background: rgba(208, 57, 43, 0.18); box-shadow: inset 0 0 0 1px rgba(208, 57, 43, 0.6);
+  border-radius: 0.15rem;
+}
+
 /* wave / swell mini bar+arrow icon */
 .wave-icon-cell { padding: 0.1rem 0.2rem !important; }
 .wave-icon-svg { width: 100%; height: 46px; display: block; }

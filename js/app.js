@@ -1315,7 +1315,7 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
 
   return `<div class="tide-curve-wrap">` +
     `<div class="tide-axis">${axisOverlay}</div>` +
-    `<div class="tide-curve-plot"${isPrint ? "" : ` data-tide-hover data-points='${JSON.stringify(points.map((p) => ({ t: p.t.getTime(), h: p.h })))}' data-tz="${d.tz}" data-daystart="${dayStartMs}" data-w="${w}" data-h="${h}" data-scale-min="${scale.min}" data-scale-max="${scale.max}"`}>` +
+    `<div class="tide-curve-plot"${isPrint ? "" : ` data-tide-hover data-iso="${d.iso}" data-points='${JSON.stringify(points.map((p) => ({ t: p.t.getTime(), h: p.h })))}' data-tz="${d.tz}" data-daystart="${dayStartMs}" data-w="${w}" data-h="${h}" data-scale-min="${scale.min}" data-scale-max="${scale.max}"`}>` +
     `<svg class="tide-curve-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Tide height curve">` +
     gradientDefs +
     nightSvg +
@@ -1325,7 +1325,16 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
     `</svg>` +
     markerOverlay +
     refOverlay +
-    (isPrint ? "" : `<div class="tide-hover-line"></div><div class="tide-hover-dot"></div><div class="tide-hover-tooltip"></div>`) +
+    (isPrint ? "" : `<div class="tide-hover-line"></div><div class="tide-hover-dot"></div><div class="tide-hover-tooltip"></div>` +
+      // "Now" indicator: a persistent (not hover-only) line/dot/label
+      // showing the current time + interpolated tide height, kept in sync
+      // by `updateNowHighlights()` on a timer - see there for why this is
+      // computed in JS on an interval rather than baked in statically here
+      // (a static render would go stale the moment time moves on, and
+      // would also survive being served from a cached page unchanged).
+      // Hidden by default (`display:none` via CSS) until that function
+      // determines this is actually today's column.
+      `<div class="tide-now-line"></div><div class="tide-now-dot"></div><div class="tide-now-label"></div>`) +
     `</div>` +
     `</div>`;
 }
@@ -1437,6 +1446,114 @@ function wireTideCurveHover(container) {
   }, { passive: true });
   container.addEventListener("touchend", () => { if (activePlot) hide(activePlot); activePlot = null; });
 }
+
+// Local-calendar-day + hour-of-day for a given instant in a given IANA
+// timezone, via Intl (`hourCycle: "h23"` specifically to get plain 0-23
+// hours - some engines return "24" for midnight under the default
+// `hour12: false` behaviour, which would silently break the `=== hour`
+// comparisons in updateNowHighlights() below at exactly midnight).
+function tzDateParts(date, tz) {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit",
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value]));
+  return { iso: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
+}
+
+// Keeps the "current conditions" indicators in sync with the real-world
+// clock: a live time+height(+trend) marker on today's Tide curve, and a
+// highlighted 2h/4h interval on today's column of every timeline row
+// (Wind/Current/Wave/Swell/Wind chop). Re-run on a timer (see init()) so
+// both keep advancing while the tab stays open, without needing a full
+// data refetch/re-render - matches the existing updateStaleBadge() pattern
+// for the same reason. Screen-only: print output has no "now", and the
+// relevant elements/attributes are only emitted for isPrint === false in
+// the first place, so this is a no-op against the print tables.
+function updateNowHighlights() {
+  const now = new Date();
+
+  document.querySelectorAll(".tide-curve-plot[data-tide-hover]").forEach((plot) => {
+    const line = plot.querySelector(".tide-now-line");
+    const dot = plot.querySelector(".tide-now-dot");
+    const label = plot.querySelector(".tide-now-label");
+    if (!line || !dot || !label) return;
+    const tz = plot.dataset.tz;
+    const { iso: todayIso } = tzDateParts(now, tz);
+    if (plot.dataset.iso !== todayIso) {
+      line.style.display = "none";
+      dot.style.display = "none";
+      label.style.display = "none";
+      return;
+    }
+    const pts = JSON.parse(plot.dataset.points);
+    const dayStart = Number(plot.dataset.daystart);
+    const h = Number(plot.dataset.h);
+    const scaleMin = Number(plot.dataset.scaleMin), scaleMax = Number(plot.dataset.scaleMax);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const fracX = Math.max(0, Math.min(1, (now.getTime() - dayStart) / dayMs));
+    const targetMs = dayStart + fracX * dayMs;
+    let i = 0;
+    while (i < pts.length - 1 && pts[i + 1].t < targetMs) i++;
+    const p0 = pts[i], p1 = pts[Math.min(i + 1, pts.length - 1)];
+    const span = p1.t - p0.t;
+    const frac = span > 0 ? (targetMs - p0.t) / span : 0;
+    const height = p0.h + (p1.h - p0.h) * frac;
+    // Rising/falling from the slope between the two bracketing 20-min
+    // sample points (same points tideCurveSvg()/the hover readout already
+    // plot) - close enough to "instantaneous" that it reliably reflects
+    // the true direction except within a few minutes of slack tide, where
+    // it's treated as "Slack" rather than flickering between the two.
+    const diff = p1.h - p0.h;
+    const trend = Math.abs(diff) < 0.005 ? "slack" : diff > 0 ? "rising" : "falling";
+    const arrow = trend === "rising" ? "\u25B2" : trend === "falling" ? "\u25BC" : "\u25CF";
+    const trendLabel = trend === "rising" ? "Rising" : trend === "falling" ? "Falling" : "Slack";
+
+    const padY = 4, labelPad = 12, labelPadBottom = 12;
+    const usableH = h - padY * 2 - labelPad - labelPadBottom;
+    const range = scaleMax - scaleMin || 1;
+    const yFrac = 1 - (height - scaleMin) / range;
+    const yPct = ((padY + labelPad + usableH * yFrac) / h) * 100;
+    const xPct = fracX * 100;
+
+    line.style.left = `${xPct.toFixed(2)}%`;
+    line.style.display = "block";
+    dot.style.left = `${xPct.toFixed(2)}%`;
+    dot.style.top = `${yPct.toFixed(2)}%`;
+    dot.style.display = "block";
+    label.textContent = `Now \u00B7 ${height.toFixed(2)}m ${arrow} ${trendLabel}`;
+    label.style.left = `${xPct.toFixed(2)}%`;
+    label.style.top = `${yPct.toFixed(2)}%`;
+    label.classList.toggle("tide-now-label--flip", xPct > 70);
+    label.style.display = "block";
+  });
+
+  // Timeline rows (Wind/Current/Wave/Swell/Wind chop): highlight a strip
+  // exactly `step` hours wide, centred the same way as the coloured
+  // background strips (timelineGradientBgStrips()) - deliberately NOT a
+  // class on `.wind-timeline-cell` itself (an earlier version did this),
+  // since that cell is a fixed-width icon/label box wider than a single
+  // 2h slot at typical column widths, which made the highlight visually
+  // read as spanning ~4h instead of the intended 2h.
+  document.querySelectorAll(".wind-timeline[data-iso]").forEach((wrap) => {
+    const marker = wrap.querySelector(".wind-timeline-now");
+    if (!marker) return;
+    const tz = wrap.dataset.tz;
+    const step = Number(wrap.dataset.step) || 2;
+    const { iso: todayIso, hour: nowHour } = tzDateParts(now, tz);
+    if (wrap.dataset.iso !== todayIso) {
+      marker.style.display = "none";
+      return;
+    }
+    const currentHour = Math.floor(nowHour / step) * step;
+    const cellWidthPct = (step / 24) * 100;
+    const leftPct = (currentHour / 24) * 100 - cellWidthPct / 2;
+    marker.style.left = `${leftPct.toFixed(2)}%`;
+    marker.style.width = `${cellWidthPct.toFixed(2)}%`;
+    marker.style.display = "block";
+  });
+}
+
 
 // Wires the "reference tide height" number input that sits in the Tide
 // curve row's label cell (only one exists at a time - it's in the
@@ -1710,6 +1827,15 @@ function miniWindBarbSvg(windDir, windSpeed, maxSpeedForScale, outline) {
 // keeping the two timeline-style rows visually aligned to the same time
 // grid. Falls back to a dash if hourly data isn't available (e.g. very
 // old cached response from before this feature existed).
+// Screen-only data attributes for a timeline row's outer wrapper, letting
+// `updateNowHighlights()` (see there) find this day/timezone/interval at
+// highlight time without threading extra params through every render call
+// site - shared by all five timeline rows (Wind/Current/Wave/Swell/Wind
+// chop) below.
+function timelineWrapAttrs(d, step, isPrint) {
+  return isPrint ? "" : ` data-iso="${d.iso}" data-tz="${d.tz}" data-step="${step}"`;
+}
+
 function windTimelineHtml(d, intervalHours, isPrint) {
   if (!d.windHourly || !d.windHourly.length) return '<span class="muted">\u2014</span>';
   const step = intervalHours || 2;
@@ -1720,13 +1846,13 @@ function windTimelineHtml(d, intervalHours, isPrint) {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     const textColor = !isPrint && h.speed != null && WIND_SPEED_WHITE_TEXT.has(windSpeedColorIndex(h.speed)) ? "color:#fff" : "";
-    return `<div class="wind-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
+    return `<div class="wind-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       miniWindBarbSvg(h.dir, h.speed, maxSpeedForScale, !isPrint) +
       `<div class="wind-timeline-speed" style="${textColor}">${h.speed != null ? Math.round(h.speed) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
-  return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
+  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
 }
 
 // Builds a row of edge-to-edge, gradient-shaded background strips behind a
@@ -1797,13 +1923,13 @@ function currentTimelineHtml(d, intervalHours, isPrint) {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     const textColor = !isPrint && h.speed != null ? readableTextColor(interpolatedScaleColor(CURRENT_SPEED_SCALE, h.speed)) : "";
-    return `<div class="wind-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
+    return `<div class="wind-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       miniCurrentArrowSvg(h.dir, h.speed, maxSpeedForScale) +
       `<div class="wind-timeline-speed current-timeline-speed"${textColor ? ` style="color:${textColor}"` : ""}>${h.speed != null ? h.speed.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
-  return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
+  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
 }
 
 // Sea-state height colour scale (metres), shared by the Wave/Swell/Wind
@@ -1856,13 +1982,13 @@ function waveTimelineHtml(d, scale, intervalHours, isPrint) {
     const val = valOf(h);
     const dir = dirOf(h);
     const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
-    return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
+    return `<div class="wind-timeline-cell wave-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wave-timeline-arrow-wrap">${miniHeightBarBg(val, maxH, isPrint)}${miniCurrentArrowSvg(dir, val, maxH)}</div>` +
       `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
-  return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
+  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
 }
 
 // "Swell" timeline row: same layout/interval convention as the Wave
@@ -1883,13 +2009,13 @@ function swellTimelineHtml(d, scale, intervalHours, isPrint) {
     const leftPct = (h.hour / 24) * 100;
     const val = h.swell;
     const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
-    return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
+    return `<div class="wind-timeline-cell wave-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wave-timeline-arrow-wrap">${miniHeightBarBg(val, maxH, isPrint)}${miniCurrentArrowSvg(h.swellDir, val, maxH)}</div>` +
       `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
-  return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
+  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
 }
 
 // "Wind chop" timeline row: hourly wind-wave height + a small direction-
@@ -1911,13 +2037,13 @@ function windWaveTimelineHtml(d, intervalHours, isPrint, scale) {
     const leftPct = (h.hour / 24) * 100;
     const val = h.windWave;
     const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(WAVE_HEIGHT_SCALE, val)) : "";
-    return `<div class="wind-timeline-cell wave-timeline-cell" style="left:${leftPct.toFixed(2)}%;">` +
+    return `<div class="wind-timeline-cell wave-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wave-timeline-arrow-wrap">${miniHeightBarBg(val, maxH, isPrint)}${miniCurrentArrowSvg(h.windWaveDir, val, maxH)}</div>` +
       `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
       `</div>`;
   }).join("");
-  return `<div class="wind-timeline">${bgStrips}${cells}</div>`;
+  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
 }
 
 
@@ -2210,6 +2336,7 @@ function render(days, settings, tideMeta) {
   wireTideCurveHover(screenWrap);
   wireRefHeightInput();
   wireRowLabelToggle(screenWrap);
+  updateNowHighlights();
 
   // --- print-only tables, 7 days per A4 landscape page ---
   const printWrap = document.createElement("div");
@@ -2482,6 +2609,13 @@ function init() {
       updateStaleBadge(lastTideMetaForBadge.dataFromCache, lastTideMetaForBadge.oldestFetchedAt);
     }
   }, 5 * 60 * 1000);
+
+  // Keep the "now" tide marker + current 2h timeline-column highlight
+  // advancing every minute while the tab stays open, same rationale as the
+  // stale-badge timer above - a plain re-render() would also work but
+  // would be far more expensive (rebuilds all 14 days' DOM) for something
+  // that only ever needs to move a marker and toggle a class.
+  setInterval(updateNowHighlights, 60 * 1000);
 
   // Register the service worker so the app shell (HTML/CSS/JS/local tide
   // CSVs) is available offline after the first successful visit.
