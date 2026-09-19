@@ -1195,14 +1195,37 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
   if (scale.kingHigh != null && scale.kingLow != null) {
     const yKingHigh = yFor(scale.kingHigh);
     const yKingLow = yFor(scale.kingLow);
-    let zones = "";
+    let highZoneSvg = "";
     if (yKingHigh > 0) {
-      // High zone: the area fill already only exists above a given y where
-      // the curve actually reaches that high, so simply clipping a
-      // 0..yKingHigh rect to the curve's own fill area correctly restricts
-      // it to "where the curve pokes above the threshold".
-      zones += `<rect x="0" y="0" width="${w}" height="${yKingHigh.toFixed(1)}" class="tide-king-zone tide-king-zone--high"></rect>`;
+      // High zone: mirrors the low zone below (clamped polygon, top edge
+      // instead of bottom edge). Real crossings here are often much
+      // smaller/briefer than a typical king-low dip (this window's
+      // tallest tide may only nudge a fraction of a metre past the
+      // station's annual top-25% threshold, for well under an hour), so
+      // the resulting patch is widened to a minimum on-screen size
+      // (MIN_KING_ZONE_PX tall / MIN_KING_ZONE_WIDTH_PX wide) wherever it
+      // crosses at all, rather than collapsing to a sub-pixel dot.
+      const MIN_KING_ZONE_PX = 4, MIN_KING_ZONE_WIDTH_PX = 8;
+      const crossIdx = [];
+      points.forEach((p, i) => { if (yFor(p.h) < yKingHigh) crossIdx.push(i); });
+      let widenFrom = -1, widenTo = -1;
+      if (crossIdx.length) {
+        let lo = crossIdx[0], hi = crossIdx[crossIdx.length - 1];
+        while ((hi - lo) * stepX < MIN_KING_ZONE_WIDTH_PX && (lo > 0 || hi < points.length - 1)) {
+          if (lo > 0) lo--;
+          if ((hi - lo) * stepX < MIN_KING_ZONE_WIDTH_PX && hi < points.length - 1) hi++;
+        }
+        widenFrom = lo; widenTo = hi;
+      }
+      const highCoords = points.map((p, i) => {
+        const cy = yFor(p.h);
+        const inZone = i >= widenFrom && i <= widenTo;
+        const top = inZone ? Math.min(cy, yKingHigh - MIN_KING_ZONE_PX) : yKingHigh;
+        return `${(i * stepX).toFixed(1)},${Math.max(0, top).toFixed(1)}`;
+      });
+      highZoneSvg = `<polygon points="0,${yKingHigh.toFixed(1)} ${highCoords.join(" ")} ${w},${yKingHigh.toFixed(1)}" class="tide-king-zone tide-king-zone--high"></polygon>`;
     }
+    let lowZoneSvg = "";
     if (yKingLow < h) {
       // Low zone: the area fill always extends down to the bottom edge
       // regardless of the curve's height at that x, so clipping a rect the
@@ -1212,9 +1235,9 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
       // curve stays above (i.e. shallower than) the threshold, and only
       // gains area where the curve actually dips below it.
       const lowCoords = points.map((p, i) => `${(i * stepX).toFixed(1)},${Math.max(yFor(p.h), yKingLow).toFixed(1)}`);
-      zones += `<polygon points="0,${h} ${lowCoords.join(" ")} ${w},${h}" class="tide-king-zone tide-king-zone--low"></polygon>`;
+      lowZoneSvg = `<polygon points="0,${h} ${lowCoords.join(" ")} ${w},${h}" class="tide-king-zone tide-king-zone--low"></polygon>`;
     }
-    kingZoneSvg = `<g clip-path="url(#${clipId})">${zones}</g>`;
+    kingZoneSvg = highZoneSvg + `<g clip-path="url(#${clipId})">${lowZoneSvg}</g>`;
   }
 
   // Night shading: darken the portion of the 24h width that falls before

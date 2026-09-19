@@ -271,6 +271,12 @@ table.planner-table {
    filled area so it only shows where the tide actually reaches that
    territory. */
 .tide-king-zone { fill: #c0392b; opacity: 0.32; pointer-events: none; }
+/* High-tide zone gets its own light-blue tint (distinct from the low-tide
+   zone's red) so a big high tide reads visually differently from a big
+   low tide, rather than both using the same red shading. */
+.tide-king-zone--high {
+  fill: #2f9e44; opacity: 0.5;
+}
 
 /* Reference tide height overlay: a dotted horizontal line at a
    user-chosen "critical depth" (entered via the input in the Tide curve
