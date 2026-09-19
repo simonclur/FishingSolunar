@@ -362,14 +362,16 @@ table.planner-table {
 .tide-curve-plot[data-tide-hover] { cursor: crosshair; }
 
 /* "Now" indicator on today's Tide curve column (screen only): a solid
-   line + dot at the current time, plus a small floating label showing the
-   live interpolated tide height - visually distinct from the hover
-   readout above (red vs the hover's plain grey/blue) since both can be
-   visible at once, and kept in sync on a timer by updateNowHighlights()
-   rather than baked in at render time, so it keeps advancing (and the
-   height keeps updating) while the tab stays open, even against a
-   cached/stale-data render. Hidden by default; shown only for whichever
-   single day column is actually "today". */
+   line + dot at the current time on the curve itself, plus a small
+   floating label anchored near the bottom of the plot (inside the shaded
+   low-tide/"king zone" band, not tracking the dot's own height) showing
+   the live time/height/rising-falling readout - kept in sync on a timer
+   by updateNowHighlights() so it keeps advancing while the tab stays
+   open, even against a cached/stale-data render. Hidden by default;
+   shown only for whichever single day column is actually "today". Anchored
+   inside `.tide-curve-plot` itself (not a separate row below it) so it
+   never disturbs the shared table row height/alignment across the other
+   13 day columns. */
 .tide-now-line {
   position: absolute; top: 0; bottom: 0; width: 2px; background: var(--now-accent, #d0392b);
   opacity: 0.75; pointer-events: none; display: none; z-index: 1;
@@ -380,12 +382,12 @@ table.planner-table {
   box-shadow: 0 0 0 1px var(--now-accent, #d0392b); pointer-events: none; display: none; z-index: 2;
 }
 .tide-now-label {
-  position: absolute; transform: translate(4px, -130%); white-space: nowrap;
+  position: absolute; bottom: 3px; transform: translateX(4px); white-space: nowrap;
   background: var(--now-accent, #d0392b); color: #fff; font-size: 0.68rem; font-weight: 700;
   padding: 0.15rem 0.4rem; border-radius: 0.3rem; pointer-events: none;
   display: none; z-index: 2;
 }
-.tide-now-label--flip { transform: translate(calc(-100% - 4px), -130%); }
+.tide-now-label--flip { transform: translateX(calc(-100% - 4px)); }
 
 /* Current 2h/4h timeline highlight strip (screen only): a precisely
    `step`-hours-wide overlay behind a timeline row's cells, positioned/sized

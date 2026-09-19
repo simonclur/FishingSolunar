@@ -1326,14 +1326,13 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
     markerOverlay +
     refOverlay +
     (isPrint ? "" : `<div class="tide-hover-line"></div><div class="tide-hover-dot"></div><div class="tide-hover-tooltip"></div>` +
-      // "Now" indicator: a persistent (not hover-only) line/dot/label
-      // showing the current time + interpolated tide height, kept in sync
-      // by `updateNowHighlights()` on a timer - see there for why this is
-      // computed in JS on an interval rather than baked in statically here
-      // (a static render would go stale the moment time moves on, and
-      // would also survive being served from a cached page unchanged).
-      // Hidden by default (`display:none` via CSS) until that function
-      // determines this is actually today's column.
+      // "Now" position marker: a persistent (not hover-only) line + dot at
+      // the current time/height on today's curve, kept in sync by
+      // `updateNowHighlights()` on a timer (see there). The accompanying
+      // text (time/height/rising-falling) is a floating label anchored to
+      // the bottom of the plot (rather than near the dot) so it always
+      // sits inside the lower, usually-shallower band of the curve and
+      // doesn't overlap the H/L markers or the reference-height overlay.
       `<div class="tide-now-line"></div><div class="tide-now-dot"></div><div class="tide-now-label"></div>`) +
     `</div>` +
     `</div>`;
@@ -1477,13 +1476,13 @@ function updateNowHighlights() {
     const line = plot.querySelector(".tide-now-line");
     const dot = plot.querySelector(".tide-now-dot");
     const label = plot.querySelector(".tide-now-label");
-    if (!line || !dot || !label) return;
+    if (!line || !dot) return;
     const tz = plot.dataset.tz;
     const { iso: todayIso } = tzDateParts(now, tz);
     if (plot.dataset.iso !== todayIso) {
       line.style.display = "none";
       dot.style.display = "none";
-      label.style.display = "none";
+      if (label) label.style.display = "none";
       return;
     }
     const pts = JSON.parse(plot.dataset.points);
@@ -1501,13 +1500,14 @@ function updateNowHighlights() {
     const height = p0.h + (p1.h - p0.h) * frac;
     // Rising/falling from the slope between the two bracketing 20-min
     // sample points (same points tideCurveSvg()/the hover readout already
-    // plot) - close enough to "instantaneous" that it reliably reflects
-    // the true direction except within a few minutes of slack tide, where
-    // it's treated as "Slack" rather than flickering between the two.
+    // plot). Always resolves to one or the other (no "slack" state) - the
+    // tide is always moving toward the next high or low at any given
+    // instant, even right at the turn, so a binary rising/falling call
+    // is a truer read than an ambiguous middle state.
     const diff = p1.h - p0.h;
-    const trend = Math.abs(diff) < 0.005 ? "slack" : diff > 0 ? "rising" : "falling";
-    const arrow = trend === "rising" ? "\u25B2" : trend === "falling" ? "\u25BC" : "\u25CF";
-    const trendLabel = trend === "rising" ? "Rising" : trend === "falling" ? "Falling" : "Slack";
+    const trend = diff >= 0 ? "rising" : "falling";
+    const arrow = trend === "rising" ? "\u25B2" : "\u25BC";
+    const trendLabel = trend === "rising" ? "Rising" : "Falling";
 
     const padY = 4, labelPad = 12, labelPadBottom = 12;
     const usableH = h - padY * 2 - labelPad - labelPadBottom;
@@ -1521,11 +1521,17 @@ function updateNowHighlights() {
     dot.style.left = `${xPct.toFixed(2)}%`;
     dot.style.top = `${yPct.toFixed(2)}%`;
     dot.style.display = "block";
-    label.textContent = `Now \u00B7 ${height.toFixed(2)}m ${arrow} ${trendLabel}`;
-    label.style.left = `${xPct.toFixed(2)}%`;
-    label.style.top = `${yPct.toFixed(2)}%`;
-    label.classList.toggle("tide-now-label--flip", xPct > 70);
-    label.style.display = "block";
+    if (label) {
+      // Anchored to a fixed position near the bottom of the plot (inside
+      // the shaded low-tide/"king zone" band) rather than tracking the
+      // dot's own y - keeps the text clear of the curve/H-L markers at
+      // any tide height, and avoids the row-height/alignment issues an
+      // earlier below-the-curve info bar caused across the 14 day columns.
+      label.textContent = `${fmtTime(now, tz)} \u00B7 ${height.toFixed(2)}m ${arrow} ${trendLabel}`;
+      label.style.left = `${xPct.toFixed(2)}%`;
+      label.classList.toggle("tide-now-label--flip", xPct > 70);
+      label.style.display = "block";
+    }
   });
 
   // Timeline rows (Wind/Current/Wave/Swell/Wind chop): highlight a strip
@@ -2142,6 +2148,24 @@ const ROW_DEFS = [
     render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCurveSvg(d, scales?.curveScale, isPrint ? 4 : 2, isPrint),
   },
   {
+    key: "wind", label: "Wind", cellClass: "wind-cell",
+    render: (d, scales, isPrint) => {
+      if (d.windSpeed == null) return "\u2014";
+      const stat = (label, val) => val == null ? "" :
+        `<div class="wind-stat"><span class="wind-stat-label">${label}</span><span class="wind-stat-val" style="${isPrint ? "" : windSpeedStyle(val)}">${val.toFixed(0)}</span></div>`;
+      return `<div class="wind-cell-row">` +
+        `${windIconSvg(d.windDir, d.windSpeed, d.windAvg, d.windGust)}` +
+        `<div class="wind-stats">${stat("Avg", d.windAvg)}${stat("Max", d.windSpeed)}${stat("Gust", d.windGust)}</div>` +
+        `</div>` +
+        `<div class="wind-speed-pill" style="${isPrint ? "" : windSpeedStyle(d.windSpeed)}">${degToCompass(d.windDir)} ${d.windSpeed.toFixed(0)} km/h</div>`;
+    },
+  },
+  {
+    key: "windTimeline", label: "Wind", cellClass: "wind-timeline-cell-wrap",
+    labelSub: { screen: "(2h)", print: "(4h)" },
+    render: (d, scales, isPrint) => windTimelineHtml(d, isPrint ? 4 : 2, isPrint),
+  },
+  {
     key: "currentTimeline", label: "Current", cellClass: "wind-timeline-cell-wrap",
     labelSub: { screen: "(2h)", print: "(4h)" },
     render: (d, scales, isPrint) => currentTimelineHtml(d, isPrint ? 4 : 2, isPrint),
@@ -2190,24 +2214,6 @@ const ROW_DEFS = [
       const icon = precipIconSvg(weatherPrecipCategory(d.weatherCode));
       return `${icon ? `<span class="wx-icon-row">${icon}</span>` : ""}<span class="${rainChanceClass(d.rainChance)}">${d.rainMm != null ? d.rainMm.toFixed(1) : "0.0"}mm (${d.rainChance ?? 0}%)</span>`;
     },
-  },
-  {
-    key: "wind", label: "Wind", cellClass: "wind-cell",
-    render: (d, scales, isPrint) => {
-      if (d.windSpeed == null) return "\u2014";
-      const stat = (label, val) => val == null ? "" :
-        `<div class="wind-stat"><span class="wind-stat-label">${label}</span><span class="wind-stat-val" style="${isPrint ? "" : windSpeedStyle(val)}">${val.toFixed(0)}</span></div>`;
-      return `<div class="wind-cell-row">` +
-        `${windIconSvg(d.windDir, d.windSpeed, d.windAvg, d.windGust)}` +
-        `<div class="wind-stats">${stat("Avg", d.windAvg)}${stat("Max", d.windSpeed)}${stat("Gust", d.windGust)}</div>` +
-        `</div>` +
-        `<div class="wind-speed-pill" style="${isPrint ? "" : windSpeedStyle(d.windSpeed)}">${degToCompass(d.windDir)} ${d.windSpeed.toFixed(0)} km/h</div>`;
-    },
-  },
-  {
-    key: "windTimeline", label: "Wind", cellClass: "wind-timeline-cell-wrap",
-    labelSub: { screen: "(2h)", print: "(4h)" },
-    render: (d, scales, isPrint) => windTimelineHtml(d, isPrint ? 4 : 2, isPrint),
   },
   {
     key: "sun", label: "Sun",
