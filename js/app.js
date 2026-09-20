@@ -1274,8 +1274,16 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
       const leftPct = (x / w) * 100;
       const topPct = (y / h) * 100;
       const labelAlign = above ? "translate(-50%, -125%)" : "translate(-50%, 25%)";
+      const timeLine = fmtTime(e.dt, d.tz);
+      const heightLine = `${e.letter} ${e.height.toFixed(1)}m`;
+      // High labels sit above the peak, so the height line (closest to
+      // the dot) goes last/bottom; low labels sit below the trough, so
+      // the height line goes first/top instead - either way the height
+      // ends up the line nearest its dot, with the time on the far line.
+      const lines = above ? [timeLine, heightLine] : [heightLine, timeLine];
+      const labelHtml = lines.map((line) => `<span class="tide-marker-label-line">${line}</span>`).join("");
       return `<span class="tide-marker-dot tide-marker-dot--${e.letter === "H" ? "high" : "low"}" style="left:${leftPct.toFixed(1)}%; top:${topPct.toFixed(1)}%;"></span>` +
-        `<span class="tide-marker-label tide-marker-label--${e.letter === "H" ? "high" : "low"}" style="left:${leftPct.toFixed(1)}%; top:${topPct.toFixed(1)}%; transform:${labelAlign};">${e.letter} ${e.height.toFixed(1)}m</span>`;
+        `<span class="tide-marker-label tide-marker-label--${e.letter === "H" ? "high" : "low"}" style="left:${leftPct.toFixed(1)}%; top:${topPct.toFixed(1)}%; transform:${labelAlign};">${labelHtml}</span>`;
     }).join("");
 
   // Time-of-day axis: hour tick labels ("00", "02"/"04", ... ) above the

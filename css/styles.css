@@ -277,7 +277,9 @@ table.planner-table {
 .tide-marker-label {
   position: absolute; font-size: 7.5px; color: var(--ink); font-weight: 700;
   white-space: nowrap; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; line-height: 1.15;
 }
+.tide-marker-label-line { white-space: nowrap; }
 .tide-marker-label--high { color: #0b4f8a; }
 .tide-marker-label--low { color: #4a90c4; }
 .tide-night { fill: var(--ink); opacity: 0.06; }
