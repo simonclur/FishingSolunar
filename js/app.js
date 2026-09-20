@@ -2392,33 +2392,42 @@ function wireDaySnap(container) {
 // than a single free-form 2-D scroll surface where diagonal drift lets a
 // vertical row-scroll also nudge the days sideways (or vice versa).
 // Detects the dominant axis of the current touch drag or wheel/trackpad
-// scroll and disables the *other* axis (via the .axis-lock-x/-y classes
-// in css/styles.css) until the gesture settles, then re-enables both.
+// scroll and, for the rest of that gesture, applies the movement to only
+// that axis's scroll position directly (via scrollLeft/scrollTop),
+// preventing the browser's own default handling of the event. Earlier
+// this toggled `overflow-x/y: hidden` classes instead, but some
+// browsers (notably WebKit/Safari) reset an axis's scroll position to 0
+// the moment it becomes non-scrollable, which showed up as horizontal
+// day-scroll jumping back to day 1 after a vertical scroll - manually
+// steering the scroll position avoids that entirely.
 function wireScrollAxisLock(container) {
   const AXIS_THRESHOLD_PX = 8; // ignore tiny jitter before committing to an axis
   const WHEEL_IDLE_MS = 200; // no wheel events for this long = gesture over
 
-  let touchStartX = 0, touchStartY = 0, touchAxisLocked = false;
+  let touchStartX = 0, touchStartY = 0, touchLastX = 0, touchLastY = 0, touchAxis = null;
   container.addEventListener("touchstart", (e) => {
     if (e.touches.length !== 1) return;
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    touchAxisLocked = false;
-    container.classList.remove("axis-lock-x", "axis-lock-y");
+    touchStartX = touchLastX = e.touches[0].clientX;
+    touchStartY = touchLastY = e.touches[0].clientY;
+    touchAxis = null;
   }, { passive: true });
   container.addEventListener("touchmove", (e) => {
-    if (touchAxisLocked || e.touches.length !== 1) return;
-    const dx = e.touches[0].clientX - touchStartX;
-    const dy = e.touches[0].clientY - touchStartY;
-    if (Math.abs(dx) < AXIS_THRESHOLD_PX && Math.abs(dy) < AXIS_THRESHOLD_PX) return;
-    touchAxisLocked = true;
-    container.classList.toggle("axis-lock-x", Math.abs(dx) > Math.abs(dy));
-    container.classList.toggle("axis-lock-y", Math.abs(dy) >= Math.abs(dx));
-  }, { passive: true });
-  const releaseTouchLock = () => {
-    touchAxisLocked = false;
-    container.classList.remove("axis-lock-x", "axis-lock-y");
-  };
+    if (e.touches.length !== 1) return;
+    const x = e.touches[0].clientX, y = e.touches[0].clientY;
+    if (!touchAxis) {
+      const totalDx = x - touchStartX, totalDy = y - touchStartY;
+      if (Math.abs(totalDx) < AXIS_THRESHOLD_PX && Math.abs(totalDy) < AXIS_THRESHOLD_PX) {
+        touchLastX = x; touchLastY = y;
+        return;
+      }
+      touchAxis = Math.abs(totalDx) > Math.abs(totalDy) ? "x" : "y";
+    }
+    e.preventDefault();
+    if (touchAxis === "x") container.scrollLeft -= x - touchLastX;
+    else container.scrollTop -= y - touchLastY;
+    touchLastX = x; touchLastY = y;
+  }, { passive: false });
+  const releaseTouchLock = () => { touchAxis = null; };
   container.addEventListener("touchend", releaseTouchLock, { passive: true });
   container.addEventListener("touchcancel", releaseTouchLock, { passive: true });
 
@@ -2426,19 +2435,15 @@ function wireScrollAxisLock(container) {
   // wheel events, and release once the burst goes quiet for a bit
   // (trackpad "scroll" gestures fire many small wheel events in a row,
   // not one clean start/end pair the way touch does).
-  let wheelLocked = false, wheelIdleTimer = null;
+  let wheelAxis = null, wheelIdleTimer = null;
   container.addEventListener("wheel", (e) => {
-    if (!wheelLocked) {
-      wheelLocked = true;
-      container.classList.toggle("axis-lock-x", Math.abs(e.deltaX) > Math.abs(e.deltaY));
-      container.classList.toggle("axis-lock-y", Math.abs(e.deltaY) >= Math.abs(e.deltaX));
-    }
+    if (!wheelAxis) wheelAxis = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? "x" : "y";
     clearTimeout(wheelIdleTimer);
-    wheelIdleTimer = setTimeout(() => {
-      wheelLocked = false;
-      container.classList.remove("axis-lock-x", "axis-lock-y");
-    }, WHEEL_IDLE_MS);
-  }, { passive: true });
+    wheelIdleTimer = setTimeout(() => { wheelAxis = null; }, WHEEL_IDLE_MS);
+    e.preventDefault();
+    if (wheelAxis === "x") container.scrollLeft += e.deltaX;
+    else container.scrollTop += e.deltaY;
+  }, { passive: false });
 }
 
 
