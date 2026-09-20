@@ -19,11 +19,22 @@
 
 * { box-sizing: border-box; }
 
+html, body { height: 100%; }
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   color: var(--ink);
   background: var(--bg);
+  /* Full-height flex column: header/settings/warning banners size
+     naturally, and #plannerRoot (below) takes up whatever's left, so the
+     table-scroll's own scroll area is always exactly "the rest of the
+     viewport" - not a hardcoded vh-minus-a-guessed-header-height value,
+     which drifted out of sync (and clipped the bottom-most table rows,
+     e.g. Sun/Moon) whenever the header's actual rendered height changed. */
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
 .no-print { }
@@ -35,12 +46,30 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 0.3rem;
   padding: 0.6rem 1rem;
   border-bottom: 2px solid var(--ink);
 }
 .app-header h1 {
   font-size: 1.1rem;
   margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+.last-updated {
+  font-size: 0.75rem;
+  color: var(--line);
+  white-space: nowrap;
 }
 .icon-btn {
   font-size: 1.3rem;
@@ -125,9 +154,29 @@ body {
 
 .loading-msg { padding: 1rem; }
 
+#plannerRoot {
+  /* Fills whatever's left of the viewport below the header/settings/
+     warning banners above (see the body flex column) - this is what
+     lets .table-scroll below size itself off "the rest of the page"
+     instead of a hardcoded vh-minus-header-height guess. */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .table-scroll {
   overflow: auto;
-  max-height: calc(100vh - 120px);
+  /* Fills #plannerRoot's full height (rather than a hardcoded
+     max-height: calc(100vh - Npx) guess at the header's height, which
+     drifted out of sync whenever the header's actual rendered height
+     changed - e.g. wrapping to two lines on a narrow phone - and
+     clipped the bottom-most table rows, such as Sun/Moon, with no way
+     to reach them). min-height: 0 is required so a flex child is
+     allowed to be smaller than its content and actually scroll instead
+     of just growing to fit it. */
+  flex: 1 1 auto;
+  min-height: 0;
   border-top: 1px solid var(--line-light);
   /* Horizontal "day" scrolling is snapped to day-column boundaries by
      JS (see wireDaySnap()/snapToNearestDay() in js/app.js) rather than
@@ -550,7 +599,6 @@ table.planner-table {
     white-space: normal;
   }
   .planner-table .row-label-col { min-width: 6.5rem; }
-  .table-scroll { max-height: calc(100vh - 60px); }
 }
 
 /* iPhone-13-style landscape: short viewport, wide-ish; show ~2-3 day columns */
@@ -568,6 +616,7 @@ table.planner-table {
 @media print {
   .no-print { display: none !important; }
   .print-only { display: block !important; }
+  #plannerRoot { display: block; flex: none; min-height: 0; }
 
   /* Default: plain landscape @page, honoured correctly by desktop
      browsers (Chrome, Firefox, Edge, macOS Safari) and most mobile
@@ -580,7 +629,16 @@ table.planner-table {
      rotates the content 90deg only for that browser. */
   @page { size: A4 landscape; margin: 5mm; }
 
-  body { background: #fff; color: #000; }
+  body {
+    background: #fff;
+    color: #000;
+    /* Undo the on-screen flex/min-height full-page layout for print -
+       flex containers can interact unpredictably with page-break-after
+       across browsers/printers, and print pagination doesn't need it. */
+    display: block;
+    min-height: 0;
+    height: auto;
+  }
 
   .print-page {
     page-break-after: always;

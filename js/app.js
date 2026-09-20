@@ -2529,6 +2529,7 @@ function render(days, settings, tideMeta) {
   }
 
   updateStaleBadge(tideMeta.dataFromCache, tideMeta.oldestFetchedAt);
+  updateLastUpdatedLabel(tideMeta.oldestFetchedAt);
 }
 
 // ---------- stale-data badge (bottom-right) ----------
@@ -2552,6 +2553,25 @@ function updateStaleBadge(dataFromCache, oldestFetchedAt) {
   } else {
     badge.hidden = true;
   }
+}
+
+// ---------- "last updated" label (header, next to the refresh button) ----------
+// Shows when the weather/wave data currently on screen was fetched (fresh
+// network calls count as "now" - see oldestFetchedAt in buildPlan() - so
+// this reads e.g. "Just now" right after a normal refresh, and an older
+// date/time only when actually serving a stale cached fallback).
+const lastUpdatedFmt = new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+
+function updateLastUpdatedLabel(oldestFetchedAt) {
+  const el = $("lastUpdatedLabel");
+  if (!oldestFetchedAt) {
+    el.hidden = true;
+    return;
+  }
+  const ageMs = Date.now() - oldestFetchedAt;
+  const text = ageMs < 60 * 1000 ? "Just now" : `Updated: ${lastUpdatedFmt.format(oldestFetchedAt)}`;
+  el.textContent = text;
+  el.hidden = false;
 }
 
 function setStatus(msg, isError) {
@@ -2745,6 +2765,7 @@ function init() {
   setInterval(() => {
     if (lastTideMetaForBadge) {
       updateStaleBadge(lastTideMetaForBadge.dataFromCache, lastTideMetaForBadge.oldestFetchedAt);
+      updateLastUpdatedLabel(lastTideMetaForBadge.oldestFetchedAt);
     }
   }, 5 * 60 * 1000);
 

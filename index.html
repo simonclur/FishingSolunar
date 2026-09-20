@@ -11,8 +11,11 @@
 
 <header class="app-header no-print">
   <h1 id="locationTitle">FishingSolunar</h1>
-  <button id="forceRefreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh (clears cached data and reloads)">&#8635;</button>
-  <button id="settingsToggle" class="icon-btn" aria-label="Settings" title="Settings">&#9881;</button>
+  <div class="header-actions">
+    <span id="lastUpdatedLabel" class="last-updated" hidden></span>
+    <button id="forceRefreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh (clears cached data and reloads)">&#8635;</button>
+    <button id="settingsToggle" class="icon-btn" aria-label="Settings" title="Settings">&#9881;</button>
+  </div>
 </header>
 
 <section id="settingsPanel" class="settings-panel no-print" hidden>
