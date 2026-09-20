@@ -2344,7 +2344,101 @@ function wireRowLabelToggle(container) {
     if (!e.target.closest(".row-label-col")) return;
     const isCollapsed = container.classList.toggle("row-labels-collapsed");
     localStorage.setItem(LS_KEYS.rowLabelsCollapsed, isCollapsed ? "1" : "0");
+    snapToNearestDay(container);
   });
+}
+
+// Snaps the horizontal scroll position so the day column nearest the
+// sticky row-label column's right edge lands flush against it, rather
+// than partly hidden underneath it. Done in JS (measuring actual
+// offsets/widths) instead of native CSS scroll-snap + scroll-padding,
+// which proved unreliable when combined with the sticky row-label
+// column across browsers - this approach gives us full control and is
+// easy to verify. See wireDaySnap() for when this gets called.
+function snapToNearestDay(container) {
+  const labelCol = container.querySelector(".row-label-col");
+  const dayHeaders = Array.from(container.querySelectorAll("thead th:not(.row-label-col)"));
+  if (!labelCol || !dayHeaders.length) return;
+  const labelWidth = labelCol.getBoundingClientRect().width;
+  // offsetLeft is relative to the table's own box and unaffected by the
+  // container's current scrollLeft, so it's a stable "day boundary" list.
+  const offsets = dayHeaders.map((th) => th.offsetLeft);
+  const target = container.scrollLeft + labelWidth; // where the next visible day's left edge currently sits
+  let nearest = offsets[0], minDist = Infinity;
+  for (const off of offsets) {
+    const dist = Math.abs(off - target);
+    if (dist < minDist) { minDist = dist; nearest = off; }
+  }
+  const desiredScrollLeft = Math.max(0, nearest - labelWidth);
+  if (Math.abs(container.scrollLeft - desiredScrollLeft) > 1) {
+    container.scrollTo({ left: desiredScrollLeft, behavior: "smooth" });
+  }
+}
+
+// Waits for horizontal scrolling to settle (debounced, since a swipe or
+// trackpad gesture fires many scroll events in quick succession) then
+// snaps to the nearest day boundary via snapToNearestDay().
+function wireDaySnap(container) {
+  const SNAP_IDLE_MS = 140;
+  let idleTimer = null;
+  container.addEventListener("scroll", () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => snapToNearestDay(container), SNAP_IDLE_MS);
+  }, { passive: true });
+}
+
+// Makes the table-scroll container feel like two independent gestures -
+// swipe left/right through days, or scroll up/down through rows - rather
+// than a single free-form 2-D scroll surface where diagonal drift lets a
+// vertical row-scroll also nudge the days sideways (or vice versa).
+// Detects the dominant axis of the current touch drag or wheel/trackpad
+// scroll and disables the *other* axis (via the .axis-lock-x/-y classes
+// in css/styles.css) until the gesture settles, then re-enables both.
+function wireScrollAxisLock(container) {
+  const AXIS_THRESHOLD_PX = 8; // ignore tiny jitter before committing to an axis
+  const WHEEL_IDLE_MS = 200; // no wheel events for this long = gesture over
+
+  let touchStartX = 0, touchStartY = 0, touchAxisLocked = false;
+  container.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchAxisLocked = false;
+    container.classList.remove("axis-lock-x", "axis-lock-y");
+  }, { passive: true });
+  container.addEventListener("touchmove", (e) => {
+    if (touchAxisLocked || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - touchStartX;
+    const dy = e.touches[0].clientY - touchStartY;
+    if (Math.abs(dx) < AXIS_THRESHOLD_PX && Math.abs(dy) < AXIS_THRESHOLD_PX) return;
+    touchAxisLocked = true;
+    container.classList.toggle("axis-lock-x", Math.abs(dx) > Math.abs(dy));
+    container.classList.toggle("axis-lock-y", Math.abs(dy) >= Math.abs(dx));
+  }, { passive: true });
+  const releaseTouchLock = () => {
+    touchAxisLocked = false;
+    container.classList.remove("axis-lock-x", "axis-lock-y");
+  };
+  container.addEventListener("touchend", releaseTouchLock, { passive: true });
+  container.addEventListener("touchcancel", releaseTouchLock, { passive: true });
+
+  // Wheel/trackpad: lock to whichever axis dominates the current burst of
+  // wheel events, and release once the burst goes quiet for a bit
+  // (trackpad "scroll" gestures fire many small wheel events in a row,
+  // not one clean start/end pair the way touch does).
+  let wheelLocked = false, wheelIdleTimer = null;
+  container.addEventListener("wheel", (e) => {
+    if (!wheelLocked) {
+      wheelLocked = true;
+      container.classList.toggle("axis-lock-x", Math.abs(e.deltaX) > Math.abs(e.deltaY));
+      container.classList.toggle("axis-lock-y", Math.abs(e.deltaY) >= Math.abs(e.deltaX));
+    }
+    clearTimeout(wheelIdleTimer);
+    wheelIdleTimer = setTimeout(() => {
+      wheelLocked = false;
+      container.classList.remove("axis-lock-x", "axis-lock-y");
+    }, WHEEL_IDLE_MS);
+  }, { passive: true });
 }
 
 
@@ -2365,6 +2459,8 @@ function render(days, settings, tideMeta) {
   wireTideCurveHover(screenWrap);
   wireRefHeightInput();
   wireRowLabelToggle(screenWrap);
+  wireScrollAxisLock(screenWrap);
+  wireDaySnap(screenWrap);
   updateNowHighlights();
 
   // --- print-only tables, 7 days per A4 landscape page ---
@@ -2645,6 +2741,15 @@ function init() {
   // would be far more expensive (rebuilds all 14 days' DOM) for something
   // that only ever needs to move a marker and toggle a class.
   setInterval(updateNowHighlights, 60 * 1000);
+
+  // Re-snap to the nearest day boundary whenever the viewport is resized
+  // (row-label column width can change at different breakpoints), so the
+  // currently-visible day stays flush with it rather than drifting
+  // partly underneath.
+  window.addEventListener("resize", () => {
+    const scrollEl = document.querySelector(".table-scroll");
+    if (scrollEl) snapToNearestDay(scrollEl);
+  });
 
   // Register the service worker so the app shell (HTML/CSS/JS/local tide
   // CSVs) is available offline after the first successful visit.

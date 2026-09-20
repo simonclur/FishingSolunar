@@ -129,7 +129,24 @@ body {
   overflow: auto;
   max-height: calc(100vh - 120px);
   border-top: 1px solid var(--line-light);
+  /* Horizontal "day" scrolling is snapped to day-column boundaries by
+     JS (see wireDaySnap()/snapToNearestDay() in js/app.js) rather than
+     native CSS scroll-snap - the sticky, always-on-top row-label column
+     (below) needs the snapped position to land just to its right, and
+     that offset has to be measured from the actual rendered label
+     width (which varies with content/collapsed state), which is more
+     reliably done in JS than via CSS scroll-padding interacting with a
+     sticky element. */
 }
+/* Applied/removed on the fly by wireScrollAxisLock() (see js/app.js): as
+   soon as a touch/wheel gesture's dominant direction is detected, the
+   *other* axis is temporarily disabled for the rest of that gesture, so
+   a vertical row-scroll can't also drag the days sideways (and vice
+   versa) - a plain 2-D `overflow: auto` container allows free diagonal
+   scrolling, which reads as accidental drift rather than the intended
+   swipe-days-horizontally / scroll-rows-vertically behaviour. */
+.table-scroll.axis-lock-x { overflow-y: hidden; }
+.table-scroll.axis-lock-y { overflow-x: hidden; }
 
 table.planner-table {
   border-collapse: collapse;
@@ -151,7 +168,8 @@ table.planner-table {
 .planner-table thead th {
   position: sticky;
   top: 0;
-  background: var(--bg);
+  background: var(--accent);
+  color: #fff;
   z-index: 3;
   border-bottom: 2px solid var(--ink);
 }
@@ -206,6 +224,7 @@ table.planner-table {
 
 .planner-table .dow { font-weight: 800; font-size: 1.05em; }
 .planner-table .daymonth { font-weight: 700; color: var(--ink); }
+.planner-table thead .daymonth { color: #fff; }
 .planner-table thead th:not(.row-label-col) {
   padding-bottom: 0.5rem;
   border-bottom: 3px solid var(--ink);
