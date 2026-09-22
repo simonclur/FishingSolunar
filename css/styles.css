@@ -70,6 +70,9 @@ body {
   font-size: 0.75rem;
   color: var(--line);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
 }
 .icon-btn {
   font-size: 1.3rem;
@@ -96,7 +99,7 @@ body {
 }
 .field { display: flex; flex-direction: column; margin-bottom: 0.6rem; }
 .field label { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.2rem; }
-.field .hint { font-weight: 400; color: var(--line); }
+.hint { font-weight: 400; color: var(--line); font-size: 0.85rem; }
 .field input, .field select {
   padding: 0.4rem;
   font-size: 1rem;
@@ -122,6 +125,7 @@ body {
 .status-msg { font-size: 0.85rem; margin-top: 0.4rem; }
 .status-msg.error { color: var(--warn); font-weight: 600; }
 .tide-source-note { font-size: 0.8rem; margin: 0.2rem 0 0.4rem; color: var(--line); }
+.nearest-info { font-size: 0.8rem; margin: 0.2rem 0 0.6rem; color: var(--line); }
 .data-warning {
   margin: 0.6rem 1rem;
   padding: 0.5rem 0.75rem;

@@ -604,3 +604,43 @@ window.LOCATION_PRESETS = [
     timezone: "Australia/Melbourne",
   },
 ];
+
+// ---------- distance helpers ----------
+// Supports "nearest location" features: a GPS/typed lat+lon rarely lands
+// exactly on a preset (e.g. Fingal Head, NSW sits right on the border a
+// few km from the Southport/Gold Coast Seaway tide gauges), so the app
+// needs to work out which bundled presets are physically closest rather
+// than requiring an exact coordinate match.
+
+const EARTH_RADIUS_KM = 6371;
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+// Every bundled preset, annotated with its distance (km) from the given
+// point and sorted nearest-first. Returns [] if lat/lon aren't valid
+// numbers (e.g. the form fields are still empty).
+function presetsByDistance(lat, lon) {
+  if (typeof lat !== "number" || typeof lon !== "number" || isNaN(lat) || isNaN(lon)) return [];
+  return window.LOCATION_PRESETS
+    .map((p) => ({ ...p, distanceKm: haversineKm(lat, lon, p.lat, p.lon) }))
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+}
+
+// Nearest preset that actually has a bundled local tide-station CSV (i.e.
+// can supply official tide highs/lows offline, not just a WorldTides
+// fallback) - this is what "auto" tide-station resolution picks for a
+// custom/GPS location that doesn't exactly match a preset.
+function nearestPresetWithTide(lat, lon) {
+  const withTide = presetsByDistance(lat, lon).filter((p) => p.tideStationId);
+  return withTide.length ? withTide[0] : null;
+}
+
+window.LocationUtils = { haversineKm, presetsByDistance, nearestPresetWithTide };

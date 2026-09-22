@@ -23,6 +23,40 @@ globals (`window.Astro`, `window.MoonCalc`, `window.SolunarCalc`,
 separately (not a `<script>` tag) via `navigator.serviceWorker.register()`
 in `js/app.js`'s `init()`.
 
+## Nearest-location resolution
+
+Weather/marine data always uses whatever lat/lon is in the form (Open-Meteo
+has no station concept - any coordinate works), so a custom/GPS location is
+already "local" for those. Tide highs/lows are different: they only come
+from a bundled CSV (`data/tides/<tideStationId>-<year>.csv`) or the
+WorldTides API fallback, and a custom lat/lon (e.g. a trip to Fingal Head,
+NSW, right next to the QLD border) rarely matches a preset's coordinates
+exactly.
+
+- **"Use my GPS location" button** (`useGpsLocation()` in `js/app.js`) calls
+  `navigator.geolocation.getCurrentPosition()` and drops the result straight
+  into the lat/lon fields - no network call of its own beyond what the
+  browser/OS location stack needs.
+- **`window.LocationUtils`** (`js/locations.js`): `haversineKm()`,
+  `presetsByDistance()` (every preset annotated with distance from a point,
+  nearest-first) and `nearestPresetWithTide()` (same, filtered to presets
+  that actually have a `tideStationId`).
+- **`resolveTideStation(lat, lon, overrideId)`** (`js/app.js`): the single
+  source of truth for "which bundled tide station applies here". An
+  explicit `overrideId` (the "Tide station" select, persisted as
+  `LS_KEYS.tideStationId`) wins if it points at a tide-capable preset;
+  otherwise falls back to `nearestPresetWithTide()`. `buildPlan()` calls
+  this whenever the current lat/lon isn't an *exact* preset match, and uses
+  its result (not just an exact-match preset) for `fetchTides()`,
+  `getStationAnnualExtremes()` and the response's `tideStationInfo`
+  (surfaced in the `#tideSourceNote` UI text, e.g. "Using nearest bundled
+  tide station: Southport, Queensland, Australia (~29 km away)").
+- The **preset and tide-station `<select>`s** both grow a "Nearest to you"
+  `<optgroup>` (top `NEAREST_GROUP_SIZE` closest, distance-labelled) at the
+  top whenever the lat/lon fields hold a valid coordinate, rebuilt on every
+  lat/lon change (typed, GPS, or preset pick) via `populatePresets()`'s
+  returned `refreshDistanceUi()`.
+
 ## Data flow
 
 1. `app.js: init()` reads saved settings from `localStorage` (or the first
@@ -767,7 +801,7 @@ out at all. King-tide spotting needs an absolute, station-specific
 baseline, not a window-relative one.
 
 **How the threshold is computed** (`getStationAnnualExtremes()` in
-`js/tides.js`): for the preset's `tideStationId`, load the bundled CSV
+`js/tides.js`): for the resolved preset's `tideStationId`, load the bundled CSV
 years `[year-1, year, year+1]` (whichever actually exist locally -
 currently every bundled QLD station only has 2026 data, so in practice
 this is just one year, improving automatically as more years get added),
@@ -784,8 +818,9 @@ deriving thresholds from data rather than hardcoding them. Returns
 with no `tideStationId` match in `LOCATION_PRESETS`).
 
 **Fallback for locations with no local CSV.** `buildPlan()` computes
-`kingTideThresholds` via `getStationAnnualExtremes()` when
-`preset?.tideStationId` exists, then attaches `kingHigh`/`kingLow` onto
+`kingTideThresholds` via `getStationAnnualExtremes()` when the *resolved*
+tide-station preset (see "Nearest-location resolution" below) has a
+`tideStationId`, then attaches `kingHigh`/`kingLow` onto
 the shared `curveScale` object (the same object `tideCurveSvg()` and
 `tideCell()` already receive, so no new prop needed threading through
 `render()`). When there's no local station data, `kingHigh`/`kingLow`

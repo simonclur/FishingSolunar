@@ -46,6 +46,17 @@
         <input id="lon" type="number" step="0.0001" required />
       </div>
     </div>
+    <div class="field-row actions">
+      <button type="button" id="useGpsBtn" class="secondary-btn">&#128205; Use my GPS location</button>
+      <span id="gpsStatus" class="hint" role="status"></span>
+    </div>
+    <p id="nearestInfo" class="hint nearest-info" hidden></p>
+    <div class="field">
+      <label for="tideStationOverride">Tide station <span class="hint">(which bundled local tide file to use for highs/lows &mdash; leave on Auto to always use whichever bundled station is physically nearest to the latitude/longitude above)</span></label>
+      <select id="tideStationOverride">
+        <option value="">Auto &mdash; nearest bundled station</option>
+      </select>
+    </div>
     <div class="field">
       <label for="startDate">Start date</label>
       <input id="startDate" type="date" required />

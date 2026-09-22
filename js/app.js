@@ -11,6 +11,12 @@ const LS_KEYS = {
   start: "fishingSolunar.startDate",
   startAuto: "fishingSolunar.startDateAuto",
   key: "fishingSolunar.worldTidesKey",
+  // Empty string (the default) means "auto": always use whichever bundled
+  // tide-station CSV is physically nearest to the current lat/lon. A
+  // non-empty value pins a specific preset's tideStationId regardless of
+  // distance, e.g. a boat launch that's genuinely closer to one station
+  // by road/water access than by straight-line GPS distance.
+  tideStationId: "fishingSolunar.tideStationId",
   refHeight: "fishingSolunar.refTideHeight",
   rowLabelsCollapsed: "fishingSolunar.rowLabelsCollapsed",
   printRows: "fishingSolunar.printRows",
@@ -270,6 +276,7 @@ function loadSettings() {
     start: startAuto ? isoDate(new Date()) : (localStorage.getItem(LS_KEYS.start) || isoDate(new Date())),
     startAuto,
     key: localStorage.getItem(LS_KEYS.key) || "",
+    tideStationId: localStorage.getItem(LS_KEYS.tideStationId) || "",
   };
 }
 
@@ -283,6 +290,29 @@ function saveSettings(s) {
   // resurface later if the user unticks the checkbox.
   if (!s.startAuto) localStorage.setItem(LS_KEYS.start, s.start);
   localStorage.setItem(LS_KEYS.key, s.key);
+  localStorage.setItem(LS_KEYS.tideStationId, s.tideStationId || "");
+}
+
+// Works out which bundled tide-station CSV to use for a given lat/lon:
+// an explicit `overrideId` (user-pinned via the "Tide station" select)
+// wins if it points at a preset that actually has a tideStationId;
+// otherwise falls back to whichever bundled-tide preset is physically
+// nearest (see nearestPresetWithTide() in js/locations.js). Returns null
+// if no bundled station exists at all, or (for the auto/nearest path only
+// - an explicit override is always honoured regardless of distance) the
+// nearest one is implausibly far away to be a meaningful substitute (e.g.
+// a location outside Australia would otherwise silently borrow a random
+// QLD station's tide predictions) - callers then rely purely on the
+// WorldTides API fallback.
+const AUTO_TIDE_STATION_MAX_KM = 300;
+function resolveTideStation(lat, lon, overrideId) {
+  if (overrideId) {
+    const pinned = window.LOCATION_PRESETS.find((p) => p.id === overrideId && p.tideStationId);
+    if (pinned) return { preset: pinned, distanceKm: window.LocationUtils.haversineKm(lat, lon, pinned.lat, pinned.lon), auto: false };
+  }
+  const nearest = window.LocationUtils.nearestPresetWithTide(lat, lon);
+  if (!nearest || nearest.distanceKm > AUTO_TIDE_STATION_MAX_KM) return null;
+  return { preset: nearest, distanceKm: nearest.distanceKm, auto: true };
 }
 
 // ---------- data fetching ----------
@@ -704,9 +734,20 @@ const EMPTY_WEATHER = { daily: { time: [], temperature_2m_max: [], temperature_2
 const EMPTY_MARINE = { daily: { time: [], wave_height_max: [], wave_direction_dominant: [], wave_period_max: [], swell_wave_height_max: [], swell_wave_direction_dominant: [], swell_wave_period_max: [], wind_wave_height_max: [], wind_wave_direction_dominant: [], wind_wave_period_max: [] }, hourly: { time: [], sea_surface_temperature: [], ocean_current_velocity: [], ocean_current_direction: [], wave_height: [], wave_direction: [], swell_wave_height: [], swell_wave_direction: [], wind_wave_height: [], wind_wave_direction: [] } };
 
 async function buildPlan(settings) {
-  const { lat, lon, start, key } = settings;
-  const preset = window.LOCATION_PRESETS.find((p) => p.lat === lat && p.lon === lon);
-  const tz = preset?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const { lat, lon, start, key, tideStationId } = settings;
+  const exactPreset = window.LOCATION_PRESETS.find((p) => p.lat === lat && p.lon === lon);
+  // An exact preset match (picked from the dropdown, or coordinates that
+  // happen to match one exactly) always wins for tide-station selection;
+  // otherwise resolve to the user's pinned override or, by default,
+  // whichever bundled tide-station preset is physically nearest - this is
+  // what lets a custom/GPS location (e.g. Fingal Head, NSW) still get
+  // official local tide highs/lows from the nearest bundled station (e.g.
+  // Southport/Gold Coast Seaway, QLD) instead of only the WorldTides API.
+  const tideResolved = exactPreset?.tideStationId
+    ? { preset: exactPreset, distanceKm: 0, auto: false }
+    : resolveTideStation(lat, lon, tideStationId);
+  const tidePreset = tideResolved?.preset || null;
+  const tz = exactPreset?.timezone || tidePreset?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const startDate = new Date(start + "T00:00:00");
   const endDate = addDays(startDate, 13);
   const startIso = isoDate(startDate);
@@ -718,7 +759,7 @@ async function buildPlan(settings) {
       .catch((err) => ({ data: EMPTY_WEATHER, fromCache: false, fetchedAt: null, error: err })),
     cachedFetch(`marine:${cacheKeyBase}`, () => fetchMarine(lat, lon, startIso, endIso, tz))
       .catch((err) => ({ data: EMPTY_MARINE, fromCache: false, fetchedAt: null, error: err })),
-    fetchTides(lat, lon, startDate, endDate, key, preset, cacheKeyBase),
+    fetchTides(lat, lon, startDate, endDate, key, tidePreset, cacheKeyBase),
   ]);
   const weather = weatherResult.data;
   const marine = marineResult.data;
@@ -732,8 +773,8 @@ async function buildPlan(settings) {
   // screen. Falls back to null (no local CSV station, e.g. a custom
   // location relying purely on the WorldTides API) - callers fall back to
   // a window-relative estimate in that case, see curveScale below.
-  const kingTideThresholds = preset?.tideStationId
-    ? await window.TideCalc.getStationAnnualExtremes(preset.tideStationId, startDate.getFullYear())
+  const kingTideThresholds = tidePreset?.tideStationId
+    ? await window.TideCalc.getStationAnnualExtremes(tidePreset.tideStationId, startDate.getFullYear())
     : null;
 
   const days = [];
@@ -884,6 +925,7 @@ async function buildPlan(settings) {
     days,
     tideSource: tides.source,
     tideNotes: tides.notes,
+    tideStationInfo: tidePreset ? { name: tidePreset.name, distanceKm: tideResolved.distanceKm, auto: tideResolved.auto } : null,
     weatherNotes,
     curveScale,
     waveScale,
@@ -2518,18 +2560,22 @@ function render(days, settings, tideMeta) {
   setStatus("");
 
   const noteEl = $("tideSourceNote");
+  const stationInfo = tideMeta.tideStationInfo;
+  const stationSuffix = stationInfo && stationInfo.auto
+    ? ` Using nearest bundled tide station: ${stationInfo.name} (~${Math.round(stationInfo.distanceKm)} km away).`
+    : "";
   if (tideMeta.source === "local") {
-    noteEl.textContent = "\u2713 Tide highs/lows: official local prediction file (no API used).";
+    noteEl.textContent = `\u2713 Tide highs/lows: official local prediction file (no API used).${stationSuffix}`;
   } else if (tideMeta.source === "local+worldtides") {
-    noteEl.textContent = "\u2713 Tide highs/lows: local file + WorldTides API for the remaining days.";
+    noteEl.textContent = `\u2713 Tide highs/lows: local file + WorldTides API for the remaining days.${stationSuffix}`;
   } else if (tideMeta.source === "worldtides") {
     noteEl.textContent = "Tide highs/lows: WorldTides API (no local file for this location).";
   } else {
     noteEl.textContent = "Tide highs/lows: no data source available for this location yet.";
   }
 
-  updateStaleBadge(tideMeta.dataFromCache, tideMeta.oldestFetchedAt);
-  updateLastUpdatedLabel(tideMeta.oldestFetchedAt);
+  updateStaleBadge(tideMeta.dataFromCache, tideMeta.oldestFetchedAt, settings.name, tideMeta.tideStationInfo);
+  updateLastUpdatedLabel(tideMeta.oldestFetchedAt, settings.name, tideMeta.tideStationInfo);
 }
 
 // ---------- stale-data badge (bottom-right) ----------
@@ -2542,8 +2588,8 @@ function render(days, settings, tideMeta) {
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000; // 6 hours
 let lastTideMetaForBadge = null;
 
-function updateStaleBadge(dataFromCache, oldestFetchedAt) {
-  lastTideMetaForBadge = { dataFromCache, oldestFetchedAt };
+function updateStaleBadge(dataFromCache, oldestFetchedAt, weatherLocationName, tideStationInfo) {
+  lastTideMetaForBadge = { dataFromCache, oldestFetchedAt, weatherLocationName, tideStationInfo };
   const badge = $("staleBadge");
   const ageMs = oldestFetchedAt ? Date.now() - oldestFetchedAt : 0;
   if (dataFromCache && ageMs > STALE_AFTER_MS) {
@@ -2562,15 +2608,32 @@ function updateStaleBadge(dataFromCache, oldestFetchedAt) {
 // date/time only when actually serving a stale cached fallback).
 const lastUpdatedFmt = new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
 
-function updateLastUpdatedLabel(oldestFetchedAt) {
+// `weatherLocationName` is simply the location name/coordinates the form is
+// set to (Open-Meteo has no "station" concept - it evaluates weather for
+// the exact lat/lon given, so that name *is* the weather source).
+// `tideStationInfo` (see resolveTideStation()) names the actual bundled
+// tide-station CSV backing the tide highs/lows, which can differ from the
+// weather location whenever it's a nearest-match rather than an exact
+// preset (e.g. weather for "Fingal Head, NSW" alongside tides from
+// "Southport, Queensland, Australia (~29 km away)").
+function updateLastUpdatedLabel(oldestFetchedAt, weatherLocationName, tideStationInfo) {
   const el = $("lastUpdatedLabel");
   if (!oldestFetchedAt) {
     el.hidden = true;
     return;
   }
   const ageMs = Date.now() - oldestFetchedAt;
-  const text = ageMs < 60 * 1000 ? "Just now" : `Updated: ${lastUpdatedFmt.format(oldestFetchedAt)}`;
-  el.textContent = text;
+  const timeText = ageMs < 60 * 1000 ? "Just now" : `Updated: ${lastUpdatedFmt.format(oldestFetchedAt)}`;
+
+  let locationText = "";
+  if (weatherLocationName && tideStationInfo && tideStationInfo.name !== weatherLocationName) {
+    const distanceText = tideStationInfo.auto ? ` (~${Math.round(tideStationInfo.distanceKm)} km)` : "";
+    locationText = ` \u00b7 Weather: ${weatherLocationName} \u00b7 Tide: ${tideStationInfo.name}${distanceText}`;
+  } else if (weatherLocationName) {
+    locationText = ` \u00b7 ${weatherLocationName}`;
+  }
+  el.textContent = timeText + locationText;
+  el.title = el.textContent;
   el.hidden = false;
 }
 
@@ -2582,9 +2645,22 @@ function setStatus(msg, isError) {
 
 // ---------- form wiring ----------
 
+// How many of the physically-closest presets to surface in a dedicated
+// "Nearest to you" group at the top of the preset/tide-station dropdowns,
+// so the single most relevant option (e.g. Southport for a Fingal Head
+// trip) doesn't get buried inside a long alphabetical/regional list.
+const NEAREST_GROUP_SIZE = 5;
+
+function currentLatLon() {
+  const lat = parseFloat($("lat").value);
+  const lon = parseFloat($("lon").value);
+  return isNaN(lat) || isNaN(lon) ? null : { lat, lon };
+}
+
 function populatePresets() {
   const sel = $("locationPreset");
   const regionSel = $("regionFilter");
+  const tideSel = $("tideStationOverride");
 
   // region filter options, in the same north-to-south order as LOCATION_PRESETS
   const regions = [...new Set(window.LOCATION_PRESETS.map((p) => p.region).filter(Boolean))];
@@ -2595,9 +2671,33 @@ function populatePresets() {
     regionSel.appendChild(opt);
   }
 
+  function labelWithDistance(p) {
+    return p.distanceKm == null ? p.name : `${p.name} \u2014 ${Math.round(p.distanceKm)} km away`;
+  }
+
   function renderPresetOptions(regionFilterValue) {
     const prevValue = sel.value;
+    const here = currentLatLon();
+    const byDistance = here ? window.LocationUtils.presetsByDistance(here.lat, here.lon) : null;
     sel.innerHTML = '<option value="">&mdash; custom &mdash;</option>';
+
+    // "Nearest to you" group: only meaningful with a real lat/lon and only
+    // when not already filtered to a single region (that filter already
+    // narrows things down, and mixing in a cross-region nearest group
+    // there would be confusing).
+    if (byDistance && !regionFilterValue) {
+      const nearGroup = document.createElement("optgroup");
+      nearGroup.label = "Nearest to you";
+      for (const p of byDistance.slice(0, NEAREST_GROUP_SIZE)) {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = labelWithDistance(p);
+        nearGroup.appendChild(opt);
+      }
+      sel.appendChild(nearGroup);
+    }
+
+    const distanceById = new Map((byDistance || []).map((p) => [p.id, p.distanceKm]));
     const groups = new Map(); // region -> optgroup element
     for (const p of window.LOCATION_PRESETS) {
       if (regionFilterValue && p.region !== regionFilterValue) continue;
@@ -2610,7 +2710,7 @@ function populatePresets() {
       }
       const opt = document.createElement("option");
       opt.value = p.id;
-      opt.textContent = p.name;
+      opt.textContent = distanceById.has(p.id) ? labelWithDistance({ ...p, distanceKm: distanceById.get(p.id) }) : p.name;
       group.appendChild(opt);
     }
     // keep the previous selection if it's still present in the filtered list
@@ -2619,7 +2719,62 @@ function populatePresets() {
     }
   }
 
-  renderPresetOptions("");
+  // Tide-station override select: same "nearest first" treatment, but
+  // restricted to presets that actually have a bundled tideStationId
+  // (picking a non-tide preset here would silently do nothing useful).
+  function renderTideStationOptions() {
+    const prevValue = tideSel.value;
+    const here = currentLatLon();
+    const tideCapable = window.LOCATION_PRESETS.filter((p) => p.tideStationId);
+    const byDistance = here ? window.LocationUtils.presetsByDistance(here.lat, here.lon).filter((p) => p.tideStationId) : null;
+
+    const autoLabel = byDistance && byDistance.length
+      ? `Auto \u2014 nearest bundled station (${byDistance[0].name}, ~${Math.round(byDistance[0].distanceKm)} km)`
+      : "Auto \u2014 nearest bundled station";
+    tideSel.innerHTML = `<option value="">${autoLabel}</option>`;
+
+    if (byDistance && byDistance.length) {
+      const nearGroup = document.createElement("optgroup");
+      nearGroup.label = "Nearest to you";
+      for (const p of byDistance.slice(0, NEAREST_GROUP_SIZE)) {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = labelWithDistance(p);
+        nearGroup.appendChild(opt);
+      }
+      tideSel.appendChild(nearGroup);
+    }
+
+    const distanceById = new Map((byDistance || []).map((p) => [p.id, p.distanceKm]));
+    const groups = new Map();
+    for (const p of tideCapable) {
+      let group = groups.get(p.region);
+      if (!group) {
+        group = document.createElement("optgroup");
+        group.label = p.region || "Other";
+        tideSel.appendChild(group);
+        groups.set(p.region, group);
+      }
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = distanceById.has(p.id) ? labelWithDistance({ ...p, distanceKm: distanceById.get(p.id) }) : p.name;
+      group.appendChild(opt);
+    }
+    if ([...tideSel.options].some((o) => o.value === prevValue)) {
+      tideSel.value = prevValue;
+    }
+  }
+
+  // Re-renders both dropdowns (distance labels + "Nearest to you" groups)
+  // and the summary line under the lat/lon fields - called whenever the
+  // lat/lon fields change (typed, GPS, or preset selection).
+  function refreshDistanceUi() {
+    renderPresetOptions(regionSel.value);
+    renderTideStationOptions();
+    updateNearestInfo();
+  }
+
+  refreshDistanceUi();
 
   regionSel.addEventListener("change", () => {
     renderPresetOptions(regionSel.value);
@@ -2631,8 +2786,78 @@ function populatePresets() {
       $("locationName").value = p.name;
       $("lat").value = p.lat;
       $("lon").value = p.lon;
+      refreshDistanceUi();
     }
   });
+
+  // Typing/pasting new coordinates directly (not via a preset or GPS) also
+  // needs to re-sort "nearest to you" and re-resolve the auto tide station,
+  // so wire the same refresh to manual edits of either field.
+  $("lat").addEventListener("change", refreshDistanceUi);
+  $("lon").addEventListener("change", refreshDistanceUi);
+
+  // Selecting a different pinned tide station doesn't move the lat/lon, so
+  // only the summary line (not the dropdowns' distance labels) needs
+  // updating.
+  tideSel.addEventListener("change", updateNearestInfo);
+
+  return refreshDistanceUi;
+}
+
+// Updates the "Nearest tide station: X (Y km)" summary line shown under
+// the lat/lon fields, reflecting whatever the effective resolution would
+// be right now (a pinned override in the Tide station select, or the
+// auto-nearest bundled station) - purely informational, doesn't affect
+// which station buildPlan() actually uses (that's resolveTideStation()).
+function updateNearestInfo() {
+  const el = $("nearestInfo");
+  const here = currentLatLon();
+  if (!here) {
+    el.hidden = true;
+    return;
+  }
+  const overrideId = $("tideStationOverride").value;
+  const resolved = resolveTideStation(here.lat, here.lon, overrideId);
+  if (!resolved) {
+    el.textContent = "No bundled tide station is close enough to be useful here \u2014 add a WorldTides API key in Settings as a fallback.";
+    el.hidden = false;
+    return;
+  }
+  const distanceText = `~${Math.round(resolved.distanceKm)} km away`;
+  el.textContent = resolved.auto
+    ? `Nearest bundled tide station: ${resolved.preset.name} (${distanceText}).`
+    : `Pinned tide station: ${resolved.preset.name} (${distanceText}).`;
+  el.hidden = false;
+}
+
+// Requests a one-off GPS fix (navigator.geolocation) and drops the result
+// straight into the lat/lon fields - the browser handles the actual
+// permission prompt/hardware access, so this is just wiring + friendly
+// status text for the common failure modes (denied, unsupported, timeout).
+function useGpsLocation() {
+  const statusEl = $("gpsStatus");
+  if (!("geolocation" in navigator)) {
+    statusEl.textContent = "Geolocation isn't supported by this browser.";
+    return;
+  }
+  statusEl.textContent = "Locating\u2026";
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      $("lat").value = pos.coords.latitude.toFixed(4);
+      $("lon").value = pos.coords.longitude.toFixed(4);
+      statusEl.textContent = `Location found (accuracy ~${Math.round(pos.coords.accuracy)} m).`;
+      $("lat").dispatchEvent(new Event("change"));
+    },
+    (err) => {
+      const messages = {
+        1: "Location permission denied. Enable it in your browser/site settings to use GPS.",
+        2: "Location unavailable right now (no GPS/network fix).",
+        3: "Location request timed out.",
+      };
+      statusEl.textContent = messages[err.code] || `Couldn't get your location (${err.message}).`;
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+  );
 }
 
 function currentFormSettings() {
@@ -2648,6 +2873,7 @@ function currentFormSettings() {
     start,
     startAuto,
     key: $("worldTidesKey").value.trim(),
+    tideStationId: $("tideStationOverride").value,
   };
 }
 
@@ -2660,8 +2886,8 @@ async function refresh() {
   saveSettings(settings);
   setStatus("Loading\u2026");
   try {
-    const { days, tideSource, tideNotes, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, dataFromCache, oldestFetchedAt } = await buildPlan(settings);
-    render(days, settings, { source: tideSource, notes: tideNotes, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, dataFromCache, oldestFetchedAt });
+    const { days, tideSource, tideNotes, tideStationInfo, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, dataFromCache, oldestFetchedAt } = await buildPlan(settings);
+    render(days, settings, { source: tideSource, notes: tideNotes, tideStationInfo, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, dataFromCache, oldestFetchedAt });
   } catch (err) {
     console.error(err);
     setStatus("Error loading data: " + err.message, true);
@@ -2700,7 +2926,7 @@ async function forceRefresh() {
 }
 
 function init() {
-  populatePresets();
+  const refreshDistanceUi = populatePresets();
   const saved = loadSettings();
   $("locationName").value = saved.name;
   $("lat").value = saved.lat;
@@ -2709,6 +2935,13 @@ function init() {
   $("startDateAuto").checked = saved.startAuto;
   $("startDate").disabled = saved.startAuto;
   $("worldTidesKey").value = saved.key;
+  $("tideStationOverride").value = saved.tideStationId;
+  // populatePresets() ran before the saved lat/lon/override were applied
+  // above, so its initial distance-label render had nothing to work with -
+  // re-run it now that the real values are in place.
+  refreshDistanceUi();
+
+  $("useGpsBtn").addEventListener("click", useGpsLocation);
 
   $("startDateAuto").addEventListener("change", () => {
     $("startDate").disabled = $("startDateAuto").checked;
@@ -2764,8 +2997,8 @@ function init() {
   // so "~6h ago" keeps advancing while the tab stays open.
   setInterval(() => {
     if (lastTideMetaForBadge) {
-      updateStaleBadge(lastTideMetaForBadge.dataFromCache, lastTideMetaForBadge.oldestFetchedAt);
-      updateLastUpdatedLabel(lastTideMetaForBadge.oldestFetchedAt);
+      updateStaleBadge(lastTideMetaForBadge.dataFromCache, lastTideMetaForBadge.oldestFetchedAt, lastTideMetaForBadge.weatherLocationName, lastTideMetaForBadge.tideStationInfo);
+      updateLastUpdatedLabel(lastTideMetaForBadge.oldestFetchedAt, lastTideMetaForBadge.weatherLocationName, lastTideMetaForBadge.tideStationInfo);
     }
   }, 5 * 60 * 1000);
 
