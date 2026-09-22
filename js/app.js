@@ -2845,8 +2845,20 @@ function useGpsLocation() {
     (pos) => {
       $("lat").value = pos.coords.latitude.toFixed(4);
       $("lon").value = pos.coords.longitude.toFixed(4);
-      statusEl.textContent = `Location found (accuracy ~${Math.round(pos.coords.accuracy)} m).`;
+      // A still-blank name field would otherwise fail the "please fill in
+      // location" validation in refresh() below - GPS gives no place name,
+      // so fall back to a generic label the user can rename afterwards.
+      if (!$("locationName").value.trim()) $("locationName").value = "My location (GPS)";
+      statusEl.textContent = `Location found (accuracy ~${Math.round(pos.coords.accuracy)} m). Refreshing\u2026`;
       $("lat").dispatchEvent(new Event("change"));
+      // Weather/marine data is fetched for whatever exact lat/lon is in the
+      // form (Open-Meteo has no station concept), so it's already "local"
+      // to a GPS fix - but only once refresh() actually runs. Without this,
+      // the GPS button only updated the tide-station hint text (nearestInfo
+      // updates instantly, being pure UI) while the weather/tide table
+      // below kept showing the previous location until the user separately
+      // clicked "Update" - auto-refreshing here keeps both in sync.
+      refresh().then(() => { statusEl.textContent = `Location found (accuracy ~${Math.round(pos.coords.accuracy)} m).`; });
     },
     (err) => {
       const messages = {
