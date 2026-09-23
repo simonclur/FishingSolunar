@@ -400,11 +400,16 @@ function saveSettings(s) {
 // nearest (see nearestPresetWithTide() in js/locations.js). Returns null
 // if no bundled station exists at all, or (for the auto/nearest path only
 // - an explicit override is always honoured regardless of distance) the
-// nearest one is implausibly far away to be a meaningful substitute (e.g.
-// a location outside Australia would otherwise silently borrow a random
-// QLD station's tide predictions) - callers then rely purely on the
-// WorldTides API fallback.
-const AUTO_TIDE_STATION_MAX_KM = 300;
+// nearest one is too far away to be a trustworthy substitute (e.g. every
+// bundled tide file is in Queensland, so a NSW location a state border
+// away would otherwise silently borrow a different tidal system's
+// predictions, or a location outside Australia would borrow a random QLD
+// station's) - callers then rely purely on the WorldTides API fallback.
+// Kept fairly tight (rather than the ~500km worst-case gap between some
+// remote bundled stations) because a same-state-but-distant approximation
+// is still often meaningfully wrong; WorldTides (if a key is configured)
+// gives genuinely local predictions instead of a rough stand-in.
+const AUTO_TIDE_STATION_MAX_KM = 100;
 function resolveTideStation(lat, lon, overrideId) {
   if (overrideId) {
     const pinned = window.LOCATION_PRESETS.find((p) => p.id === overrideId && p.tideStationId);
