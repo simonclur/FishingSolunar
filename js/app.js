@@ -2878,10 +2878,11 @@ function useGpsLocation() {
     (pos) => {
       $("lat").value = pos.coords.latitude.toFixed(4);
       $("lon").value = pos.coords.longitude.toFixed(4);
-      // A still-blank name field would otherwise fail the "please fill in
-      // location" validation in refresh() below - GPS gives no place name,
-      // so fall back to a generic label the user can rename afterwards.
-      if (!$("locationName").value.trim()) $("locationName").value = "My location (GPS)";
+      // Always overwrite the name with a GPS-specific label so the header,
+      // "last updated" line and saved settings don't keep showing whatever
+      // preset/typed name was there before (that name belongs to the old
+      // location, not this GPS fix) - the user can still rename afterwards.
+      $("locationName").value = "My location (GPS)";
       setLocationMode("gps");
 
       // Clear any active region filter (the GPS fix could easily be in a
