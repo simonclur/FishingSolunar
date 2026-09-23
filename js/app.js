@@ -70,6 +70,26 @@ let refTideHeight = (() => {
 // of it) rather than re-running the whole `refresh()` fetch pipeline.
 let lastRenderArgs = null;
 
+// Set once by populatePresets() (see init()) so useGpsLocation() - a
+// separate top-level function - can trigger the same "Nearest to you"
+// dropdown/hint rebuild that lat/lon field edits and preset selection
+// already do, without needing populatePresets() to run again.
+let refreshDistanceUiFn = null;
+
+// Tracks whether the lat/lon currently in the form came from a GPS fix
+// ("my location") or from picking a preset/typing coordinates by hand
+// ("selected location") - purely a labelling/styling concern (which field
+// labels and the GPS button's look show), not what data gets fetched
+// (that's always driven by whatever lat/lon is actually in the form).
+function setLocationMode(mode) {
+  const isGps = mode === "gps";
+  $("latLabel").textContent = isGps ? "My latitude" : "Selected latitude";
+  $("lonLabel").textContent = isGps ? "My longitude" : "Selected longitude";
+  const btn = $("useGpsBtn");
+  btn.textContent = isGps ? "\u{1F4CD} Using my GPS location" : "\u{1F4CD} Use my GPS location";
+  btn.classList.toggle("gps-active", isGps);
+}
+
 function setRefTideHeight(value) {
   refTideHeight = value;
   if (value === null || isNaN(value)) localStorage.removeItem(LS_KEYS.refHeight);
@@ -2786,15 +2806,28 @@ function populatePresets() {
       $("locationName").value = p.name;
       $("lat").value = p.lat;
       $("lon").value = p.lon;
+      // An explicit preset pick is a "selected location", not a GPS fix -
+      // and unlike a plain lat/lon edit, it should immediately show the
+      // new location's weather + tides rather than waiting for a manual
+      // "Update" click.
+      setLocationMode("preset");
       refreshDistanceUi();
+      refresh();
     }
   });
 
   // Typing/pasting new coordinates directly (not via a preset or GPS) also
   // needs to re-sort "nearest to you" and re-resolve the auto tide station,
-  // so wire the same refresh to manual edits of either field.
-  $("lat").addEventListener("change", refreshDistanceUi);
-  $("lon").addEventListener("change", refreshDistanceUi);
+  // so wire the same refresh to manual edits of either field. Only fires on
+  // a real user-driven `change` event (blur after typing) - GPS sets these
+  // fields via script and never dispatches a synthetic event, so this can't
+  // accidentally stomp on "gps" mode right after a GPS fix.
+  const onManualLatLonChange = () => {
+    setLocationMode("preset");
+    refreshDistanceUi();
+  };
+  $("lat").addEventListener("change", onManualLatLonChange);
+  $("lon").addEventListener("change", onManualLatLonChange);
 
   // Selecting a different pinned tide station doesn't move the lat/lon, so
   // only the summary line (not the dropdowns' distance labels) needs
@@ -2849,8 +2882,22 @@ function useGpsLocation() {
       // location" validation in refresh() below - GPS gives no place name,
       // so fall back to a generic label the user can rename afterwards.
       if (!$("locationName").value.trim()) $("locationName").value = "My location (GPS)";
+      setLocationMode("gps");
+
+      // Clear any active region filter (the GPS fix could easily be in a
+      // different region to whatever was last browsed) so the overall-
+      // nearest preset below is guaranteed to be a selectable option, then
+      // rebuild the "Nearest to you" groups/hints for these coordinates.
+      $("regionFilter").value = "";
+      if (refreshDistanceUiFn) refreshDistanceUiFn();
+      // Auto-select the closest preset in the dropdown purely for
+      // reference (assigned directly, not via a real user "change" event,
+      // so its own change handler doesn't overwrite these GPS coordinates
+      // with that preset's exact lat/lon).
+      const nearest = window.LocationUtils.presetsByDistance(pos.coords.latitude, pos.coords.longitude)[0];
+      if (nearest) $("locationPreset").value = nearest.id;
+
       statusEl.textContent = `Location found (accuracy ~${Math.round(pos.coords.accuracy)} m). Refreshing\u2026`;
-      $("lat").dispatchEvent(new Event("change"));
       // Weather/marine data is fetched for whatever exact lat/lon is in the
       // form (Open-Meteo has no station concept), so it's already "local"
       // to a GPS fix - but only once refresh() actually runs. Without this,
@@ -2938,7 +2985,8 @@ async function forceRefresh() {
 }
 
 function init() {
-  const refreshDistanceUi = populatePresets();
+  refreshDistanceUiFn = populatePresets();
+  setLocationMode("preset");
   const saved = loadSettings();
   $("locationName").value = saved.name;
   $("lat").value = saved.lat;
@@ -2951,7 +2999,7 @@ function init() {
   // populatePresets() ran before the saved lat/lon/override were applied
   // above, so its initial distance-label render had nothing to work with -
   // re-run it now that the real values are in place.
-  refreshDistanceUi();
+  refreshDistanceUiFn();
 
   $("useGpsBtn").addEventListener("click", useGpsLocation);
 
