@@ -133,6 +133,10 @@ function onLatLonTextChange() {
   syncLatLonDisplay();
   setLocationMode("preset");
   if (refreshDistanceUiFn) refreshDistanceUiFn();
+  // Pasting/typing a valid coordinate pair should immediately show that
+  // location's weather + tides, matching the preset-dropdown behaviour,
+  // instead of leaving the old data on screen until "Update" is clicked.
+  refresh();
 }
 
 function setRefTideHeight(value) {
