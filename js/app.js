@@ -115,6 +115,25 @@ function syncLatLonDisplay() {
   $("latLon").value = formatLatLonPair(parseFloat($("lat").value), parseFloat($("lon").value));
 }
 
+// Shared by useGpsLocation() and onLatLonTextChange(): given a lat/lon that
+// didn't come from picking an exact preset, finds the nearest bundled
+// location (used as the local weather/tide reference point), auto-selects
+// it in the "Preset location" dropdown for reference, and builds a name
+// like "<baseLabel> - Southport, Queensland, Australia - ~29km away" so
+// it's obvious at a glance which local data is in play. Falls back to just
+// `baseLabel` if no preset is found (shouldn't normally happen - the
+// bundled list covers the whole coastline).
+function syncNearestPresetAndName(lat, lon, baseLabel) {
+  $("regionFilter").value = "";
+  if (refreshDistanceUiFn) refreshDistanceUiFn();
+  const nearest = window.LocationUtils.presetsByDistance(lat, lon)[0];
+  if (nearest) $("locationPreset").value = nearest.id;
+  $("locationName").value = nearest
+    ? `${baseLabel} - ${nearest.name} - ~${Math.round(nearest.distanceKm)}km away`
+    : baseLabel;
+  return nearest;
+}
+
 // Fires when the user edits the visible combined field directly (paste or
 // manual typing). A malformed pair is flagged via the native validation
 // bubble and left alone - it does NOT touch #lat/#lon (avoids clobbering a
@@ -132,7 +151,11 @@ function onLatLonTextChange() {
   $("lon").value = parsed.lon;
   syncLatLonDisplay();
   setLocationMode("preset");
-  if (refreshDistanceUiFn) refreshDistanceUiFn();
+  // Mirrors useGpsLocation(): auto-select the nearest preset in the
+  // dropdown and name the location after it, rather than leaving the
+  // dropdown on whatever was previously picked and the name field blank/
+  // stale.
+  syncNearestPresetAndName(parsed.lat, parsed.lon, "Selected location");
   // Pasting/typing a valid coordinate pair should immediately show that
   // location's weather + tides, matching the preset-dropdown behaviour,
   // instead of leaving the old data on screen until "Update" is clicked.
@@ -2932,29 +2955,15 @@ function useGpsLocation() {
       syncLatLonDisplay();
       setLocationMode("gps");
 
-      // Clear any active region filter (the GPS fix could easily be in a
-      // different region to whatever was last browsed) so the overall-
-      // nearest preset below is guaranteed to be a selectable option, then
-      // rebuild the "Nearest to you" groups/hints for these coordinates.
-      $("regionFilter").value = "";
-      if (refreshDistanceUiFn) refreshDistanceUiFn();
-      // Auto-select the closest preset in the dropdown purely for
-      // reference (assigned directly, not via a real user "change" event,
-      // so its own change handler doesn't overwrite these GPS coordinates
-      // with that preset's exact lat/lon).
-      const nearest = window.LocationUtils.presetsByDistance(pos.coords.latitude, pos.coords.longitude)[0];
-      if (nearest) $("locationPreset").value = nearest.id;
-
-      // Always overwrite the name with a GPS-specific label so the header,
-      // "last updated" line and saved settings don't keep showing whatever
-      // preset/typed name was there before (that name belongs to the old
-      // location, not this GPS fix) - the user can still rename afterwards.
-      // Append the nearest bundled location (used as the reference point
-      // for weather/tide station resolution) and its distance, when one
-      // was found, so it's obvious at a glance which local data is in play.
-      $("locationName").value = nearest
-        ? `My location (GPS) - ${nearest.name} - ~${Math.round(nearest.distanceKm)}km away`
-        : "My location (GPS)";
+      // Auto-select the nearest preset in the dropdown (for reference -
+      // assigned directly, not via a real user "change" event, so its own
+      // change handler doesn't overwrite these GPS coordinates with that
+      // preset's exact lat/lon) and name the location after it. Always
+      // overwrites the name so the header, "last updated" line and saved
+      // settings don't keep showing whatever preset/typed name was there
+      // before (that name belongs to the old location, not this GPS fix) -
+      // the user can still rename afterwards.
+      syncNearestPresetAndName(pos.coords.latitude, pos.coords.longitude, "My location (GPS)");
 
       statusEl.textContent = `Location found (accuracy ~${Math.round(pos.coords.accuracy)} m). Refreshing\u2026`;
       // Weather/marine data is fetched for whatever exact lat/lon is in the
