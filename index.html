@@ -36,14 +36,17 @@
       <label for="locationName">Location name</label>
       <input id="locationName" type="text" required placeholder="Waddy Point, K'gari (Fraser Island), Queensland, Australia" />
     </div>
-    <div class="field-row">
+    <div class="field">
+      <label for="latLon" id="latLonLabel">Selected coordinates</label>
+      <input id="latLon" type="text" inputmode="decimal" autocomplete="off" required placeholder="-28.1935, 153.5661" />
+      <span class="hint">Decimal degrees as &ldquo;latitude, longitude&rdquo; &mdash; paste directly from Google Maps or similar.</span>
+    </div>
+    <div class="field-row" hidden>
       <div class="field">
-        <label for="lat" id="latLabel">Selected latitude</label>
-        <input id="lat" type="number" step="0.0001" required />
+        <input id="lat" type="number" step="0.0001" tabindex="-1" aria-hidden="true" />
       </div>
       <div class="field">
-        <label for="lon" id="lonLabel">Selected longitude</label>
-        <input id="lon" type="number" step="0.0001" required />
+        <input id="lon" type="number" step="0.0001" tabindex="-1" aria-hidden="true" />
       </div>
     </div>
     <div class="field-row actions">

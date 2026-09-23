@@ -83,11 +83,56 @@ let refreshDistanceUiFn = null;
 // (that's always driven by whatever lat/lon is actually in the form).
 function setLocationMode(mode) {
   const isGps = mode === "gps";
-  $("latLabel").textContent = isGps ? "My latitude" : "Selected latitude";
-  $("lonLabel").textContent = isGps ? "My longitude" : "Selected longitude";
+  $("latLonLabel").textContent = isGps ? "My coordinates" : "Selected coordinates";
   const btn = $("useGpsBtn");
   btn.textContent = isGps ? "\u{1F4CD} Using my GPS location" : "\u{1F4CD} Use my GPS location";
   btn.classList.toggle("gps-active", isGps);
+}
+
+// Combined "-28.1935, 153.5661" text field is what the user actually sees
+// and edits; the underlying #lat/#lon number inputs stay in the DOM
+// (hidden) purely so the rest of the app can keep reading/writing them
+// individually without a wider refactor. parseLatLonPair()/formatLatLonPair()
+// convert between the two representations, and syncLatLonDisplay() keeps
+// the visible field showing whatever #lat/#lon currently hold (e.g. after a
+// preset pick or a GPS fix sets them programmatically).
+function parseLatLonPair(text) {
+  const match = String(text || "").trim().match(/^(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+  const lat = parseFloat(match[1]);
+  const lon = parseFloat(match[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  return { lat, lon };
+}
+
+function formatLatLonPair(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return "";
+  return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+}
+
+function syncLatLonDisplay() {
+  $("latLon").value = formatLatLonPair(parseFloat($("lat").value), parseFloat($("lon").value));
+}
+
+// Fires when the user edits the visible combined field directly (paste or
+// manual typing). A malformed pair is flagged via the native validation
+// bubble and left alone - it does NOT touch #lat/#lon (avoids clobbering a
+// previously-good position with garbage), so refresh() still safely uses
+// whatever coordinates were last valid.
+function onLatLonTextChange() {
+  const parsed = parseLatLonPair($("latLon").value);
+  if (!parsed) {
+    $("latLon").setCustomValidity('Enter coordinates as "latitude, longitude", e.g. -28.1935, 153.5661');
+    $("latLon").reportValidity();
+    return;
+  }
+  $("latLon").setCustomValidity("");
+  $("lat").value = parsed.lat;
+  $("lon").value = parsed.lon;
+  syncLatLonDisplay();
+  setLocationMode("preset");
+  if (refreshDistanceUiFn) refreshDistanceUiFn();
 }
 
 function setRefTideHeight(value) {
@@ -2806,6 +2851,7 @@ function populatePresets() {
       $("locationName").value = p.name;
       $("lat").value = p.lat;
       $("lon").value = p.lon;
+      syncLatLonDisplay();
       // An explicit preset pick is a "selected location", not a GPS fix -
       // and unlike a plain lat/lon edit, it should immediately show the
       // new location's weather + tides rather than waiting for a manual
@@ -2828,6 +2874,7 @@ function populatePresets() {
   };
   $("lat").addEventListener("change", onManualLatLonChange);
   $("lon").addEventListener("change", onManualLatLonChange);
+  $("latLon").addEventListener("change", onLatLonTextChange);
 
   // Selecting a different pinned tide station doesn't move the lat/lon, so
   // only the summary line (not the dropdowns' distance labels) needs
@@ -2878,11 +2925,7 @@ function useGpsLocation() {
     (pos) => {
       $("lat").value = pos.coords.latitude.toFixed(4);
       $("lon").value = pos.coords.longitude.toFixed(4);
-      // Always overwrite the name with a GPS-specific label so the header,
-      // "last updated" line and saved settings don't keep showing whatever
-      // preset/typed name was there before (that name belongs to the old
-      // location, not this GPS fix) - the user can still rename afterwards.
-      $("locationName").value = "My location (GPS)";
+      syncLatLonDisplay();
       setLocationMode("gps");
 
       // Clear any active region filter (the GPS fix could easily be in a
@@ -2897,6 +2940,17 @@ function useGpsLocation() {
       // with that preset's exact lat/lon).
       const nearest = window.LocationUtils.presetsByDistance(pos.coords.latitude, pos.coords.longitude)[0];
       if (nearest) $("locationPreset").value = nearest.id;
+
+      // Always overwrite the name with a GPS-specific label so the header,
+      // "last updated" line and saved settings don't keep showing whatever
+      // preset/typed name was there before (that name belongs to the old
+      // location, not this GPS fix) - the user can still rename afterwards.
+      // Append the nearest bundled location (used as the reference point
+      // for weather/tide station resolution) and its distance, when one
+      // was found, so it's obvious at a glance which local data is in play.
+      $("locationName").value = nearest
+        ? `My location (GPS) - ${nearest.name} - ~${Math.round(nearest.distanceKm)}km away`
+        : "My location (GPS)";
 
       statusEl.textContent = `Location found (accuracy ~${Math.round(pos.coords.accuracy)} m). Refreshing\u2026`;
       // Weather/marine data is fetched for whatever exact lat/lon is in the
@@ -3033,6 +3087,7 @@ function init() {
   $("locationName").value = saved.name;
   $("lat").value = saved.lat;
   $("lon").value = saved.lon;
+  syncLatLonDisplay();
   $("startDate").value = saved.start;
   $("startDateAuto").checked = saved.startAuto;
   $("startDate").disabled = saved.startAuto;
