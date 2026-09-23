@@ -3060,48 +3060,80 @@ async function forceRefresh() {
   window.location.href = window.location.pathname + "?_refresh=" + Date.now();
 }
 
-// Lets a WorldTides API key be shared via a link (e.g.
-// https://.../?worldTidesKey=XXXX) instead of being committed to the repo.
-// On first load with that query param present, the key is copied into this
-// browser's localStorage (same place the Settings form saves it) and then
-// immediately stripped from the address bar/history via replaceState, so it
-// doesn't linger in the URL after the initial visit.
-function applyWorldTidesKeyFromUrl() {
+// Lets a location (name + lat/lon) and/or a WorldTides API key be shared via
+// a link (e.g. https://.../?lat=-28.199&lon=153.571&name=Fingal+Head&
+// worldTidesKey=XXXX) instead of the recipient having to configure anything
+// themselves. On load, any of these query params present are copied into
+// the form (overriding whatever was previously saved in this browser) and
+// then immediately stripped from the address bar/history via
+// replaceState, so they don't linger in the URL after the initial visit.
+// Must run after the form has been populated from loadSettings() (so these
+// values are true overrides, not overwritten again afterwards) but before
+// init()'s own trailing refresh(), which then fetches/saves whatever ends
+// up in the fields.
+function applySharedLocationAndKeyFromUrl() {
   const params = new URLSearchParams(location.search);
   const urlKey = params.get("worldTidesKey");
-  if (!urlKey) return;
-  localStorage.setItem(LS_KEYS.key, urlKey.trim());
-  params.delete("worldTidesKey");
+  const urlLat = parseFloat(params.get("lat"));
+  const urlLon = parseFloat(params.get("lon"));
+  const urlName = params.get("name");
+  const hasLocation = Number.isFinite(urlLat) && Number.isFinite(urlLon);
+  if (!urlKey && !hasLocation) return;
+
+  if (urlKey) $("worldTidesKey").value = urlKey.trim();
+  if (hasLocation) {
+    $("lat").value = urlLat;
+    $("lon").value = urlLon;
+    syncLatLonDisplay();
+    $("locationName").value = urlName ? urlName.trim() : "Shared location";
+    setLocationMode("preset");
+    // A shared link's coordinates are unlikely to exactly match a bundled
+    // preset, and any tide-station override saved in *this* browser almost
+    // certainly relates to a different, previous location - so resolve
+    // fresh, the same way GPS/pasted coordinates already do.
+    syncNearestPresetAndName(urlLat, urlLon, urlName ? urlName.trim() : "Shared location");
+  }
+
+  ["worldTidesKey", "lat", "lon", "name"].forEach((k) => params.delete(k));
   const rest = params.toString();
-  const cleanUrl = location.pathname + (rest ? `?${rest}` : "") + location.hash;
-  history.replaceState(null, "", cleanUrl);
+  history.replaceState(null, "", location.pathname + (rest ? `?${rest}` : "") + location.hash);
 }
 
-// Builds a shareable link that auto-fills the *currently entered* WorldTides
-// API key (see applyWorldTidesKeyFromUrl() above) and copies it to the
-// clipboard, so the key itself never needs to be pasted/typed by whoever
-// it's shared with. Falls back to just showing the link text if the
-// clipboard API isn't available/permitted (e.g. non-HTTPS, older browser).
-async function shareWorldTidesKeyLink() {
+// Builds a shareable link that auto-fills the *currently configured*
+// location (name + lat/lon) and, if entered, the WorldTides API key - so
+// whoever opens it immediately sees weather/tides for this exact spot
+// without typing/pasting anything. Copies the link to the clipboard,
+// falling back to just showing the link text if the Clipboard API isn't
+// available/permitted (e.g. non-HTTPS, older browser).
+async function shareLocationLink() {
   const statusEl = $("shareKeyStatus");
-  const key = $("worldTidesKey").value.trim();
-  if (!key) {
+  const lat = parseFloat($("lat").value);
+  const lon = parseFloat($("lon").value);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
     statusEl.hidden = false;
-    statusEl.textContent = "Enter a WorldTides API key above first.";
+    statusEl.textContent = "Choose a location above first.";
     return;
   }
-  const url = `${location.origin}${location.pathname}?worldTidesKey=${encodeURIComponent(key)}`;
+  const params = new URLSearchParams();
+  params.set("lat", lat);
+  params.set("lon", lon);
+  const name = $("locationName").value.trim();
+  if (name) params.set("name", name);
+  const key = $("worldTidesKey").value.trim();
+  if (key) params.set("worldTidesKey", key);
+  const url = `${location.origin}${location.pathname}?${params.toString()}`;
   statusEl.hidden = false;
   try {
     await navigator.clipboard.writeText(url);
-    statusEl.textContent = "Link copied to clipboard \u2014 only share it with people you trust.";
+    statusEl.textContent = key
+      ? "Link copied to clipboard (includes your API key) \u2014 only share it with people you trust."
+      : "Link copied to clipboard.";
   } catch {
-    statusEl.textContent = `Copy this link (only share with people you trust): ${url}`;
+    statusEl.textContent = `Copy this link${key ? " (only share with people you trust)" : ""}: ${url}`;
   }
 }
 
 function init() {
-  applyWorldTidesKeyFromUrl();
   refreshDistanceUiFn = populatePresets();
   setLocationMode("preset");
   const saved = loadSettings();
@@ -3119,9 +3151,16 @@ function init() {
   // re-run it now that the real values are in place.
   refreshDistanceUiFn();
 
+  // Apply any shared location/key from a link's query params (see
+  // shareLocationLink()) - deliberately runs after the saved settings above
+  // so a shared link always overrides whatever was previously configured in
+  // this browser, and before the trailing refresh() below so the fetch
+  // actually uses it.
+  applySharedLocationAndKeyFromUrl();
+
   $("useGpsBtn").addEventListener("click", useGpsLocation);
 
-  $("shareKeyBtn").addEventListener("click", shareWorldTidesKeyLink);
+  $("shareKeyBtn").addEventListener("click", shareLocationLink);
 
   $("startDateAuto").addEventListener("change", () => {
     $("startDate").disabled = $("startDateAuto").checked;
