@@ -74,7 +74,12 @@
     </div>
     <div class="field">
       <label for="worldTidesKey">WorldTides API key <span class="hint">(optional &mdash; not needed for Waddy Point or any location with a bundled local tide file; only used as a fallback for other locations/years. Free signup at worldtides.info)</span></label>
-      <input id="worldTidesKey" type="password" autocomplete="off" placeholder="paste your key here" />
+      <div class="field-row">
+        <input id="worldTidesKey" type="password" autocomplete="off" placeholder="paste your key here" />
+        <button type="button" id="shareKeyBtn" class="secondary-btn">Share key link</button>
+      </div>
+      <span class="hint">Generates a link that auto-fills this key in whoever opens it &mdash; only share it with people you trust, the same as the key itself.</span>
+      <p id="shareKeyStatus" class="hint" role="status" hidden></p>
     </div>
     <div class="field-row actions">
       <button type="submit" class="primary-btn">Update</button>

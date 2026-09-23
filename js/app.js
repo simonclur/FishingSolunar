@@ -3001,6 +3001,29 @@ function applyWorldTidesKeyFromUrl() {
   history.replaceState(null, "", cleanUrl);
 }
 
+// Builds a shareable link that auto-fills the *currently entered* WorldTides
+// API key (see applyWorldTidesKeyFromUrl() above) and copies it to the
+// clipboard, so the key itself never needs to be pasted/typed by whoever
+// it's shared with. Falls back to just showing the link text if the
+// clipboard API isn't available/permitted (e.g. non-HTTPS, older browser).
+async function shareWorldTidesKeyLink() {
+  const statusEl = $("shareKeyStatus");
+  const key = $("worldTidesKey").value.trim();
+  if (!key) {
+    statusEl.hidden = false;
+    statusEl.textContent = "Enter a WorldTides API key above first.";
+    return;
+  }
+  const url = `${location.origin}${location.pathname}?worldTidesKey=${encodeURIComponent(key)}`;
+  statusEl.hidden = false;
+  try {
+    await navigator.clipboard.writeText(url);
+    statusEl.textContent = "Link copied to clipboard \u2014 only share it with people you trust.";
+  } catch {
+    statusEl.textContent = `Copy this link (only share with people you trust): ${url}`;
+  }
+}
+
 function init() {
   applyWorldTidesKeyFromUrl();
   refreshDistanceUiFn = populatePresets();
@@ -3020,6 +3043,8 @@ function init() {
   refreshDistanceUiFn();
 
   $("useGpsBtn").addEventListener("click", useGpsLocation);
+
+  $("shareKeyBtn").addEventListener("click", shareWorldTidesKeyLink);
 
   $("startDateAuto").addEventListener("change", () => {
     $("startDate").disabled = $("startDateAuto").checked;

@@ -108,6 +108,8 @@ body {
 }
 .field-row { display: flex; gap: 0.75rem; }
 .field-row .field { flex: 1; }
+.field-row input#worldTidesKey { flex: 1; min-width: 0; }
+.field-row #shareKeyBtn { flex: 0 0 auto; }
 .field-group-label { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.1rem; }
 .field-checkboxes { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; margin-top: 0.3rem; }
 .checkbox-label { display: flex; align-items: center; gap: 0.35rem; font-weight: 400; font-size: 0.9rem; }
