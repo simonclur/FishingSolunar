@@ -410,6 +410,52 @@ function saveSettings(s) {
 // is still often meaningfully wrong; WorldTides (if a key is configured)
 // gives genuinely local predictions instead of a rough stand-in.
 const AUTO_TIDE_STATION_MAX_KM = 100;
+
+// The 36 bundled MSQ tide CSVs (data/tides/*-<year>.csv) are all published
+// for this single calendar year - MSQ refreshes these annually (see
+// docs/DATA_SOURCES.md), so this must be bumped (and new
+// data/tides/<stationId>-<newYear>.csv files added) once a year, ideally
+// before the year rolls over. Update this constant whenever new files are
+// added for a later year.
+const BUNDLED_TIDE_DATA_YEAR = 2026;
+
+// MSQ/data.qld.gov.au typically publish next year's whole-year tide tables
+// in late October/early November of the preceding year (well ahead of the
+// year actually rolling over) - see docs/DATA_SOURCES.md. Using this as the
+// "go check for new files" target date (rather than the later 1 Jan
+// stale-data date) gives a couple of months' notice before the bundled
+// data is actually out of date.
+const BUNDLED_TIDE_DATA_PUBLISH_MONTH = 10; // 0-indexed: 10 = November
+const BUNDLED_TIDE_DATA_PUBLISH_DAY = 1;
+
+// Renders a settings hint with a countdown to two dates for the *next*
+// calendar year's bundled tide data: when MSQ usually publishes it
+// (typically ~1 Nov, giving a heads-up to go check data.qld.gov.au) and
+// when the current bundled year actually goes stale (1 Jan, once the new
+// year's dates roll around). Purely informational: nothing breaks when the
+// data goes stale, the app already falls back to the WorldTides API
+// automatically (see fetchTides()) for any year/day not covered locally.
+function updateBundledTideDataStatus() {
+  const el = $("bundledTideDataStatus");
+  if (!el) return;
+  const nextYear = BUNDLED_TIDE_DATA_YEAR + 1;
+  const publishFrom = new Date(BUNDLED_TIDE_DATA_YEAR, BUNDLED_TIDE_DATA_PUBLISH_MONTH, BUNDLED_TIDE_DATA_PUBLISH_DAY);
+  const staleFrom = new Date(`${nextYear}-01-01T00:00:00`);
+  const now = new Date();
+  const msPerDay = 24 * 3600 * 1000;
+  const daysUntilPublish = Math.ceil((publishFrom.getTime() - now.getTime()) / msPerDay);
+  const daysUntilStale = Math.ceil((staleFrom.getTime() - now.getTime()) / msPerDay);
+  const publishDateText = publishFrom.toLocaleDateString(undefined, { day: "numeric", month: "long" });
+  if (daysUntilPublish > 0) {
+    el.textContent = `Bundled Queensland tide data covers ${BUNDLED_TIDE_DATA_YEAR}. MSQ usually publishes ${nextYear}'s tide tables around ${publishDateText} (in ${daysUntilPublish} day${daysUntilPublish === 1 ? "" : "s"}) - check data.qld.gov.au then and add data/tides/*-${nextYear}.csv files - see docs/DATA_SOURCES.md.`;
+  } else if (daysUntilStale > 0) {
+    el.textContent = `Bundled Queensland tide data covers ${BUNDLED_TIDE_DATA_YEAR}. ${nextYear}'s tide tables should be published by now - check data.qld.gov.au and add data/tides/*-${nextYear}.csv files in the next ${daysUntilStale} day${daysUntilStale === 1 ? "" : "s"} (before 1 Jan ${nextYear}) - see docs/DATA_SOURCES.md.`;
+  } else {
+    const daysOverdue = -daysUntilStale;
+    el.textContent = `Bundled Queensland tide data still only covers ${BUNDLED_TIDE_DATA_YEAR} and is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue for a ${nextYear} refresh - check data.qld.gov.au and add data/tides/*-${nextYear}.csv files - see docs/DATA_SOURCES.md. Bundled stations are automatically falling back to the WorldTides API in the meantime (a key is required for that in Settings).`;
+  }
+}
+
 function resolveTideStation(lat, lon, overrideId) {
   if (overrideId) {
     const pinned = window.LOCATION_PRESETS.find((p) => p.id === overrideId && p.tideStationId);
@@ -2939,7 +2985,9 @@ function updateNearestInfo() {
   const overrideId = $("tideStationOverride").value;
   const resolved = resolveTideStation(here.lat, here.lon, overrideId);
   if (!resolved) {
-    el.textContent = "No bundled tide station is close enough to be useful here \u2014 add a WorldTides API key in Settings as a fallback.";
+    el.textContent = $("worldTidesKey").value.trim()
+      ? "No bundled tide station is close enough to be useful here \u2014 using the WorldTides API for this exact location instead."
+      : "No bundled tide station is close enough to be useful here \u2014 add a WorldTides API key in Settings as a fallback.";
     el.hidden = false;
     return;
   }
@@ -3155,6 +3203,7 @@ function init() {
   // above, so its initial distance-label render had nothing to work with -
   // re-run it now that the real values are in place.
   refreshDistanceUiFn();
+  updateBundledTideDataStatus();
 
   // Apply any shared location/key from a link's query params (see
   // shareLocationLink()) - deliberately runs after the saved settings above
