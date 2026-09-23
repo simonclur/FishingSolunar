@@ -125,6 +125,14 @@ function syncLatLonDisplay() {
 // bundled list covers the whole coastline).
 function syncNearestPresetAndName(lat, lon, baseLabel) {
   $("regionFilter").value = "";
+  // A previously pinned "Tide station" override (see resolveTideStation())
+  // always wins over distance, with no cap - meaning a stale pin from an
+  // earlier, unrelated location would otherwise silently keep being used
+  // here too, even though it's no longer the nearest (or even remotely
+  // close) station to these new coordinates. Reset to "Auto" so the tide
+  // station genuinely reflects the new position; the user can re-pin a
+  // specific station afterwards if they still want one.
+  $("tideStationOverride").value = "";
   if (refreshDistanceUiFn) refreshDistanceUiFn();
   const nearest = window.LocationUtils.presetsByDistance(lat, lon)[0];
   if (nearest) $("locationPreset").value = nearest.id;
