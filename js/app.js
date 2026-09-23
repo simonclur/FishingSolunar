@@ -2984,7 +2984,25 @@ async function forceRefresh() {
   window.location.href = window.location.pathname + "?_refresh=" + Date.now();
 }
 
+// Lets a WorldTides API key be shared via a link (e.g.
+// https://.../?worldTidesKey=XXXX) instead of being committed to the repo.
+// On first load with that query param present, the key is copied into this
+// browser's localStorage (same place the Settings form saves it) and then
+// immediately stripped from the address bar/history via replaceState, so it
+// doesn't linger in the URL after the initial visit.
+function applyWorldTidesKeyFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const urlKey = params.get("worldTidesKey");
+  if (!urlKey) return;
+  localStorage.setItem(LS_KEYS.key, urlKey.trim());
+  params.delete("worldTidesKey");
+  const rest = params.toString();
+  const cleanUrl = location.pathname + (rest ? `?${rest}` : "") + location.hash;
+  history.replaceState(null, "", cleanUrl);
+}
+
 function init() {
+  applyWorldTidesKeyFromUrl();
   refreshDistanceUiFn = populatePresets();
   setLocationMode("preset");
   const saved = loadSettings();
