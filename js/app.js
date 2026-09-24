@@ -1530,13 +1530,12 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
       // rotated -90deg; using the Unicode thin-space keeps a small but
       // consistent visual gap without materially lengthening the label
       // (which would need a bigger dot-to-label clearance to still fit
-      // within the print row height). The height is included too (same
-      // value at every crossing, since a crossing is by definition where
-      // the curve equals refTideHeight) so both time AND height read
-      // together right at the dot, matching the standalone hover-readout
-      // tooltip's "time \u00B7 height" convention.
+      // within the print row height). Time-only here - the line's height
+      // value is shown once already via the horizontal
+      // .tide-ref-height-label above the line, so repeating it at every
+      // crossing would just be redundant clutter.
       return `<span class="tide-ref-dot" style="left:${xPct.toFixed(1)}%; top:${yPct.toFixed(1)}%;"></span>` +
-        `<span class="tide-ref-time ${sideClass}" style="left:${xPct.toFixed(1)}%; top:${yPct.toFixed(1)}%;">${arrow}\u2009\u2009${fmtTime(c.t, d.tz)} \u00B7 ${refTideHeight.toFixed(2)}m</span>`;
+        `<span class="tide-ref-time ${sideClass}" style="left:${xPct.toFixed(1)}%; top:${yPct.toFixed(1)}%;">${arrow}\u2009\u2009${fmtTime(c.t, d.tz)}</span>`;
     }).join("");
     // A single plain-horizontal (unrotated, unlike the per-crossing time
     // labels above) label showing the line's own height value, once per
