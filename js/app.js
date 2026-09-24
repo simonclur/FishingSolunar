@@ -1512,6 +1512,7 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
   let refOverlay = "";
   if (refTideHeight != null && !isNaN(refTideHeight) && refTideHeight >= scale.min && refTideHeight <= scale.max) {
     const yPct = (yFor(refTideHeight) / h) * 100;
+    const lineY = yFor(refTideHeight);
     const crossings = findHeightCrossings(points, refTideHeight, d.tideAllEvents);
     const crossingHtml = crossings.map((c) => {
       const xPct = (xFor(c.t) / w) * 100;
@@ -1537,14 +1538,51 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
       return `<span class="tide-ref-dot" style="left:${xPct.toFixed(1)}%; top:${yPct.toFixed(1)}%;"></span>` +
         `<span class="tide-ref-time ${sideClass}" style="left:${xPct.toFixed(1)}%; top:${yPct.toFixed(1)}%;">${arrow}\u2009\u2009${fmtTime(c.t, d.tz)}</span>`;
     }).join("");
-    // A single plain-horizontal (unrotated, unlike the per-crossing time
-    // labels above) label showing the line's own height value, once per
-    // day - sits just above the dotted line itself so it's immediately
-    // obvious what height the line represents without having to check the
-    // input field. Centred on the day column so it doesn't collide with
-    // the H/L markers, which sit at the actual peak/trough x-positions
-    // rather than dead-centre.
-    const heightLabelHtml = `<span class="tide-ref-height-label" style="top:${yPct.toFixed(1)}%;">${refTideHeight.toFixed(2)}m</span>`;
+    // The line's own height value, written once per day - placed
+    // explicitly in the "free space" between adjacent H/L markers (the
+    // midpoint of each gap along the x-axis, from day-start to the first
+    // marker, between each consecutive pair of markers, and from the
+    // last marker to day-end), rather than picked purely by "biggest
+    // vertical gap from the line" - that naturally tends to land right ON
+    // a peak/trough (where a marker's own label already sits), which is
+    // the opposite of free space. Segments narrower than
+    // MIN_SEGMENT_W are skipped (not enough width for a label without
+    // crowding both neighbouring markers); among the remaining segment
+    // midpoints, the one where the curve is vertically furthest from the
+    // line is chosen, so the label also tends to land somewhere the curve
+    // itself isn't close to the line either.
+    const markerXsSorted = markerDefs.map((m) => xFor(m.dt)).sort((a, b) => a - b);
+    const boundaryXs = [0, ...markerXsSorted, w];
+    const MIN_SEGMENT_W = w * 0.32;
+    let bestMidX = null, bestGapPx = -1, bestCurveY = null;
+    for (let i = 0; i < boundaryXs.length - 1; i++) {
+      const segW = boundaryXs[i + 1] - boundaryXs[i];
+      if (segW < MIN_SEGMENT_W) continue;
+      const midX = (boundaryXs[i] + boundaryXs[i + 1]) / 2;
+      const midMs = dayStartMs + (midX / w) * dayMs;
+      let j = 0;
+      while (j < points.length - 1 && points[j + 1].t.getTime() < midMs) j++;
+      const p0 = points[j], p1 = points[Math.min(j + 1, points.length - 1)];
+      const span = p1.t.getTime() - p0.t.getTime();
+      const frac = span > 0 ? (midMs - p0.t.getTime()) / span : 0;
+      const midCurveY = yFor(p0.h + (p1.h - p0.h) * frac);
+      const gapPx = Math.abs(midCurveY - lineY);
+      if (gapPx > bestGapPx) { bestGapPx = gapPx; bestMidX = midX; bestCurveY = midCurveY; }
+    }
+    // Degenerate fallback (markers packed too tight to leave any segment
+    // wide enough): just use the day's dead centre.
+    if (bestMidX == null) {
+      bestMidX = w / 2;
+      const midIdx = Math.floor((points.length - 1) / 2);
+      bestCurveY = yFor(points[midIdx].h);
+    }
+    const labelXPct = (bestMidX / w) * 100;
+    // Curve sits above the line on-screen (smaller y = higher tide) at
+    // this x -> that space is occupied, so the label goes below instead;
+    // otherwise (curve below the line, e.g. near a low) the label sits
+    // above it, as before.
+    const labelBelow = bestCurveY < lineY;
+    const heightLabelHtml = `<span class="tide-ref-height-label${labelBelow ? " tide-ref-height-label--below" : ""}" style="left:${labelXPct.toFixed(1)}%; top:${yPct.toFixed(1)}%;">${refTideHeight.toFixed(2)}m</span>`;
     refOverlay = `<div class="tide-ref-line" style="top:${yPct.toFixed(1)}%;"></div>${heightLabelHtml}${crossingHtml}`;
   }
 

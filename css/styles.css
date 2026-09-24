@@ -384,14 +384,20 @@ table.planner-table {
   white-space: nowrap; pointer-events: none; z-index: 2;
 }
 /* The line's own height value (e.g. "1.20m"), written plain-horizontal
-   (no rotation, unlike .tide-ref-time above) just above the dotted line,
-   centred on the day column - one per day, distinct from the per-crossing
-   time+height labels which sit rotated at the actual dot positions. */
+   (no rotation, unlike .tide-ref-time above) just above/below the dotted
+   line - one per day. `left` is set inline per-day by tideCurveSvg(),
+   picked as whichever x has the most vertical clearance between the
+   curve and the line that day (so it lands in open space rather than a
+   fixed dead-centre position that could land on the curve or an H/L
+   marker); `--below` is added when the curve bulges above the line at
+   that x (e.g. near a high), so the label sits in the empty space below
+   the line instead of overlapping the curve above it. */
 .tide-ref-height-label {
-  position: absolute; left: 50%; font-size: 9.5px; font-weight: 700; color: #c0392b;
+  position: absolute; font-size: 9.5px; font-weight: 700; color: #c0392b;
   white-space: nowrap; pointer-events: none; z-index: 2;
-  transform: translate(-50%, calc(-100% - 2px));
+  transform: translate(-50%, calc(-100% - 3px));
 }
+.tide-ref-height-label--below { transform: translate(-50%, calc(3px)); }
 /* Falling crossings (heading toward the next low): label sits above the
    line, reading bottom-to-top (rotated -90deg, "head tilted left"),
    centred on the dot horizontally with clear vertical space above it.
