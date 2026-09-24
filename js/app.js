@@ -1530,11 +1530,23 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
       // rotated -90deg; using the Unicode thin-space keeps a small but
       // consistent visual gap without materially lengthening the label
       // (which would need a bigger dot-to-label clearance to still fit
-      // within the print row height).
+      // within the print row height). The height is included too (same
+      // value at every crossing, since a crossing is by definition where
+      // the curve equals refTideHeight) so both time AND height read
+      // together right at the dot, matching the standalone hover-readout
+      // tooltip's "time \u00B7 height" convention.
       return `<span class="tide-ref-dot" style="left:${xPct.toFixed(1)}%; top:${yPct.toFixed(1)}%;"></span>` +
-        `<span class="tide-ref-time ${sideClass}" style="left:${xPct.toFixed(1)}%; top:${yPct.toFixed(1)}%;">${arrow}\u2009\u2009${fmtTime(c.t, d.tz)}</span>`;
+        `<span class="tide-ref-time ${sideClass}" style="left:${xPct.toFixed(1)}%; top:${yPct.toFixed(1)}%;">${arrow}\u2009\u2009${fmtTime(c.t, d.tz)} \u00B7 ${refTideHeight.toFixed(2)}m</span>`;
     }).join("");
-    refOverlay = `<div class="tide-ref-line" style="top:${yPct.toFixed(1)}%;"></div>${crossingHtml}`;
+    // A single plain-horizontal (unrotated, unlike the per-crossing time
+    // labels above) label showing the line's own height value, once per
+    // day - sits just above the dotted line itself so it's immediately
+    // obvious what height the line represents without having to check the
+    // input field. Centred on the day column so it doesn't collide with
+    // the H/L markers, which sit at the actual peak/trough x-positions
+    // rather than dead-centre.
+    const heightLabelHtml = `<span class="tide-ref-height-label" style="top:${yPct.toFixed(1)}%;">${refTideHeight.toFixed(2)}m</span>`;
+    refOverlay = `<div class="tide-ref-line" style="top:${yPct.toFixed(1)}%;"></div>${heightLabelHtml}${crossingHtml}`;
   }
 
   return `<div class="tide-curve-wrap">` +
@@ -2655,6 +2667,16 @@ function render(days, settings, tideMeta) {
 
   const printRowToggles = loadPrintRowToggles();
   const root = $("plannerRoot");
+  // render() fully rebuilds the table (root.innerHTML = "" below), which
+  // throws away the old `.table-scroll` element - a brand new one always
+  // starts at scrollLeft/scrollTop 0, which used to visibly "jump back to
+  // day 1" every time e.g. clicking the tide curve to set a reference
+  // height (or any other in-place refresh) re-ran render(). Capture the
+  // previous scroll position here and restore it onto the new element
+  // below so re-renders stay put on whichever day the user was looking at.
+  const prevScroll = document.querySelector(".table-scroll");
+  const prevScrollLeft = prevScroll ? prevScroll.scrollLeft : 0;
+  const prevScrollTop = prevScroll ? prevScroll.scrollTop : 0;
   root.innerHTML = "";
   const scales = { curveScale: tideMeta.curveScale, waveScale: tideMeta.waveScale, waveTimelineScale: tideMeta.waveTimelineScale, windWaveTimelineScale: tideMeta.windWaveTimelineScale };
   // --- interactive (screen) table ---
@@ -2662,6 +2684,10 @@ function render(days, settings, tideMeta) {
   screenWrap.className = "table-scroll no-print";
   screenWrap.appendChild(buildTable(days, "planner-table", scales, printRowToggles));
   root.appendChild(screenWrap);
+  if (prevScrollLeft || prevScrollTop) {
+    screenWrap.scrollLeft = prevScrollLeft;
+    screenWrap.scrollTop = prevScrollTop;
+  }
   wireTideCurveHover(screenWrap);
   wireRefHeightInput();
   wireRowLabelToggle(screenWrap);

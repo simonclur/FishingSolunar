@@ -383,6 +383,15 @@ table.planner-table {
   position: absolute; font-size: 9.5px; font-weight: 700; color: #c0392b;
   white-space: nowrap; pointer-events: none; z-index: 2;
 }
+/* The line's own height value (e.g. "1.20m"), written plain-horizontal
+   (no rotation, unlike .tide-ref-time above) just above the dotted line,
+   centred on the day column - one per day, distinct from the per-crossing
+   time+height labels which sit rotated at the actual dot positions. */
+.tide-ref-height-label {
+  position: absolute; left: 50%; font-size: 9.5px; font-weight: 700; color: #c0392b;
+  white-space: nowrap; pointer-events: none; z-index: 2;
+  transform: translate(-50%, calc(-100% - 2px));
+}
 /* Falling crossings (heading toward the next low): label sits above the
    line, reading bottom-to-top (rotated -90deg, "head tilted left"),
    centred on the dot horizontally with clear vertical space above it.
@@ -723,6 +732,7 @@ table.planner-table {
   .print-table .tide-ref-line { border-top-color: #000; }
   .print-table .tide-ref-dot { background: #000; }
   .print-table .tide-ref-time { color: #000; }
+  .print-table .tide-ref-height-label { color: #000; }
   /* Print-specific offset override - see the long comment on
      `.tide-ref-time--above`/`--below` above for why this can't just
      reuse the screen value; 3.8em was measured directly against the
