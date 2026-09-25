@@ -28,6 +28,21 @@ every API used must support CORS for browser `fetch()` calls.
 
 - Endpoint: `https://marine-api.open-meteo.com/v1/marine`
 - No API key required. CORS-enabled.
+- **Coordinates used**: unlike the Weather API above (which always queries
+  the exact entered lat/lon), the Marine API is queried at the *resolved
+  tide station's* coordinates (see `resolveTideStation()`/`marineLat`/
+  `marineLon` in `js/app.js`), not the entered location's own coordinates.
+  Open-Meteo's marine model only has data over actual ocean grid points, so
+  querying it directly at an inland lat/lon returns empty data; reusing the
+  same nearest-coastal-point resolution already used for tide highs/lows
+  means an inland location (e.g. a town 40km from the coast) still gets a
+  meaningful, if approximate, marine forecast instead of blank rows. Falls
+  back to the entered coordinates if no tide station resolves (e.g. too far
+  inland — see `AUTO_TIDE_STATION_MAX_KM`), in which case marine rows will
+  likely come back empty anyway. The header's "last updated" label and the
+  tide-source note both surface this as e.g. "Tide/Marine: Southport,
+  Queensland, Australia (~43 km)" whenever it differs from the weather
+  location.
 - Fields used (`daily=`): `wave_height_max`, `wave_direction_dominant`,
   `wave_period_max`, `swell_wave_height_max`, `swell_wave_direction_dominant`,
   `swell_wave_period_max`, `wind_wave_height_max`,

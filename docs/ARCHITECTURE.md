@@ -996,6 +996,37 @@ service worker itself - then does a hard `location.href` reload with a
 cache-busting query param, guaranteeing the very next load fetches
 everything fresh and re-registers the service worker from scratch.
 
+## Inland locations: weather vs tide/marine coordinates
+
+A location can be entered anywhere (any lat/lon, not just on the coast),
+but the two Open-Meteo APIs need different coordinate strategies to both
+give useful results:
+
+- **Weather** (`fetchWeather()`) always queries the *exact entered*
+  lat/lon — Open-Meteo's forecast model covers the whole globe, so an
+  inland town correctly gets its own local air temp/wind/rain rather than
+  conditions from the coast.
+- **Marine** (`fetchMarine()`, waves/swell/sea temp/current) only has data
+  over actual ocean grid points — querying it directly at an inland lat/lon
+  returns empty daily/hourly arrays, which used to mean an inland location
+  showed blank Wave/Swell/Sea temp/Current/Wind chop rows entirely. Fixed
+  by reusing the same nearest-coastal-point resolution already used for
+  tide highs/lows (`resolveTideStation()`) — `buildPlan()` computes
+  `marineLat`/`marineLon` from the resolved tide station's own coordinates
+  (falling back to the entered lat/lon only if no station resolves, e.g.
+  too far inland — see `AUTO_TIDE_STATION_MAX_KM`) and passes those to
+  `fetchMarine()` instead of the entered coordinates. Tide highs/lows
+  already worked this way; this just extends the same "nearest coastal
+  reference point" idea to the Marine API fetch, and gives it its own cache
+  key (`marineCacheKeyBase`) separate from the weather/tide cache key
+  (which is still keyed on the entered lat/lon) since the two coordinate
+  pairs can now differ.
+- Surfaced to the user via the header's "last updated" label (e.g.
+  `Weather: <entered location> · Tide/Marine: Southport, Queensland,
+  Australia (~43 km)`) and the tide-source note under the settings panel,
+  both only shown when the resolved station differs from the entered
+  location.
+
 ## Adding a data field
 
 To add a new row (e.g. "Water clarity"), add one entry to the `ROW_DEFS`

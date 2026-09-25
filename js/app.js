@@ -943,11 +943,31 @@ async function buildPlan(settings) {
   const startIso = isoDate(startDate);
   const endIso = isoDate(endDate);
 
+  // Weather (air temp/wind/rain/pressure/sun) always uses the entered
+  // lat/lon directly - Open-Meteo's forecast model covers the whole globe,
+  // so an inland location correctly gets its own local weather rather than
+  // conditions from the coast. Waves/swell/sea temp/current, though, only
+  // exist for actual ocean grid points - Open-Meteo's Marine API returns
+  // empty data for an inland point, which is exactly the "can't get marine
+  // conditions for an inland spot" gap this fixes. Since the tide station
+  // is already resolved to the nearest bundled/pinned *coastal* point (see
+  // resolveTideStation() above), reuse those same coordinates for the
+  // Marine API fetch too, so an inland location still shows a meaningful
+  // (if slightly approximate) marine forecast from its nearest coast,
+  // exactly mirroring how tide highs/lows already work. Falls back to the
+  // entered coordinates when no tide station resolved (e.g. far enough
+  // inland that even the nearest bundled station is outside
+  // AUTO_TIDE_STATION_MAX_KM) - marine data will likely come back empty
+  // there too, same as before this change.
+  const marineLat = tidePreset ? tidePreset.lat : lat;
+  const marineLon = tidePreset ? tidePreset.lon : lon;
+
   const cacheKeyBase = `${lat},${lon},${startIso},${endIso}`;
+  const marineCacheKeyBase = `${marineLat},${marineLon},${startIso},${endIso}`;
   const [weatherResult, marineResult, tides] = await Promise.all([
     cachedFetch(`weather:${cacheKeyBase}`, () => fetchWeather(lat, lon, startIso, endIso, tz))
       .catch((err) => ({ data: EMPTY_WEATHER, fromCache: false, fetchedAt: null, error: err })),
-    cachedFetch(`marine:${cacheKeyBase}`, () => fetchMarine(lat, lon, startIso, endIso, tz))
+    cachedFetch(`marine:${marineCacheKeyBase}`, () => fetchMarine(marineLat, marineLon, startIso, endIso, tz))
       .catch((err) => ({ data: EMPTY_MARINE, fromCache: false, fetchedAt: null, error: err })),
     fetchTides(lat, lon, startDate, endDate, key, tidePreset, cacheKeyBase),
   ]);
@@ -2921,7 +2941,7 @@ function render(days, settings, tideMeta) {
   const noteEl = $("tideSourceNote");
   const stationInfo = tideMeta.tideStationInfo;
   const stationSuffix = stationInfo && stationInfo.auto
-    ? ` Using nearest bundled tide station: ${stationInfo.name} (~${Math.round(stationInfo.distanceKm)} km away).`
+    ? ` Using nearest bundled tide station: ${stationInfo.name} (~${Math.round(stationInfo.distanceKm)} km away) - also used as the reference point for waves/swell/sea temp/current.`
     : "";
   if (tideMeta.source === "local") {
     noteEl.textContent = `\u2713 Tide highs/lows: official local prediction file (no API used).${stationSuffix}`;
@@ -2971,9 +2991,11 @@ const lastUpdatedFmt = new Intl.DateTimeFormat("en-AU", { day: "numeric", month:
 // set to (Open-Meteo has no "station" concept - it evaluates weather for
 // the exact lat/lon given, so that name *is* the weather source).
 // `tideStationInfo` (see resolveTideStation()) names the actual bundled
-// tide-station CSV backing the tide highs/lows, which can differ from the
-// weather location whenever it's a nearest-match rather than an exact
-// preset (e.g. weather for "Fingal Head, NSW" alongside tides from
+// tide-station CSV backing the tide highs/lows *and* (see buildPlan()'s
+// `marineLat`/`marineLon`) the coordinates used for the Marine API
+// (waves/swell/sea temp/current) fetch, which can differ from the weather
+// location whenever it's a nearest-match rather than an exact preset (e.g.
+// weather for "Fingal Head, NSW" alongside tides/marine data from
 // "Southport, Queensland, Australia (~29 km away)").
 function updateLastUpdatedLabel(oldestFetchedAt, weatherLocationName, tideStationInfo) {
   const el = $("lastUpdatedLabel");
@@ -2987,7 +3009,7 @@ function updateLastUpdatedLabel(oldestFetchedAt, weatherLocationName, tideStatio
   let locationText = "";
   if (weatherLocationName && tideStationInfo && tideStationInfo.name !== weatherLocationName) {
     const distanceText = tideStationInfo.auto ? ` (~${Math.round(tideStationInfo.distanceKm)} km)` : "";
-    locationText = ` \u00b7 Weather: ${weatherLocationName} \u00b7 Tide: ${tideStationInfo.name}${distanceText}`;
+    locationText = ` \u00b7 Weather: ${weatherLocationName} \u00b7 Tide/Marine: ${tideStationInfo.name}${distanceText}`;
   } else if (weatherLocationName) {
     locationText = ` \u00b7 ${weatherLocationName}`;
   }
