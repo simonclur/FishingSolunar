@@ -1025,6 +1025,29 @@ give useful results:
   title (see next section) and the tide-source note under the settings
   panel, both only shown when the resolved station differs from the
   entered location.
+- Even with a resolved coastal reference point, a location too far inland
+  (beyond `AUTO_TIDE_STATION_MAX_KM`, or genuinely landlocked) still gets
+  a Marine API response with every value `null` (Open-Meteo returns the
+  date but nulls the fields, rather than omitting the date - confirmed via
+  a direct API call for an inland QLD point). `buildPlan()` detects this
+  (`marine.daily.wave_height_max[idx] == null`, not just a missing date)
+  and adds a "Waves/swell/sea temp/current unavailable..." note to
+  `weatherNotes` (shown in `#dataWarning`). `ROW_DEFS` entries for the
+  affected rows (`waves`, `waveTimeline`, `swellTimeline`,
+  `windWaveTimeline`, `waveEnergy`, `seaTemp`, `currentTimeline`) each
+  declare a `hasData(d)` predicate checking for an actual non-null value
+  (not just a non-empty hourly array - `hourlyCurrentForDay()` still
+  returns an entry per hour even when its `speed`/`dir` are `null`, so
+  `currentTimeline`'s predicate specifically checks
+  `h.speed != null`, not just array length); `buildTable()` skips
+  rendering a row entirely (screen *and* print) when not one visible day
+  satisfies it, rather than showing an unbroken column of "—"
+  placeholders.
+- The tide highs/lows/curve rows (`tideHigh`, `tideLow`, `tideCurve`) get
+  the same `hasData: (d) => !d.tidesMissing` treatment - hidden entirely
+  (not just "—" per day) when not one visible day has a resolved tide
+  prediction (no local file, no WorldTides key/response). The existing
+  "Tide highs/lows unavailable..." warning still explains why.
 
 ## Location naming: weather place name vs tide/marine station
 

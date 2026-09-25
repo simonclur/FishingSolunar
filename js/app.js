@@ -1194,8 +1194,20 @@ async function buildPlan(settings) {
     if (missing) weatherNotes.push(`Weather/wind/sun unavailable for ${missing} of 14 day(s) (outside Open-Meteo's forecast range)`);
   }
   if (!marineResult.error) {
-    const missing = days.filter((d) => !marine.daily.time.includes(d.iso)).length;
-    if (missing) weatherNotes.push(`Waves/swell/sea temp unavailable for ${missing} of 14 day(s) (outside Open-Meteo's forecast range)`);
+    // A date can be present in marine.daily.time yet still carry a `null`
+    // wave_height_max - the Marine API returns land grid points with
+    // every value nulled out rather than omitting the date outright (see
+    // buildPlan()'s marineLat/marineLon comment - this is what a genuinely
+    // inland location looks like once no coastal tide station resolved
+    // within AUTO_TIDE_STATION_MAX_KM). Counting only missing *dates*
+    // would silently miss this and show no warning at all, even though the
+    // wave/swell/sea temp/current rows end up hidden entirely (see
+    // ROW_DEFS `hasData`/buildTable()).
+    const missing = days.filter((d) => {
+      const idx = marine.daily.time.indexOf(d.iso);
+      return idx === -1 || marine.daily.wave_height_max[idx] == null;
+    }).length;
+    if (missing) weatherNotes.push(`Waves/swell/sea temp/current unavailable for ${missing} of 14 day(s) (outside Open-Meteo's forecast range, or no marine data at this location)`);
   }
 
   return {
@@ -2624,8 +2636,8 @@ const ROW_DEFS = [
     key: "solunar", label: "Solunar", labelIcon: fishLabelIconSvg(),
     render: (d) => `<span class="stars" title="Approximate rating">${starString(d.solunar.rating)}</span>`,
   },
-  { key: "tideHigh", label: "High tide", render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCell(d.tideHighs, d.tz, d.sunrise, d.sunset, scales?.curveScale, "high", isPrint) },
-  { key: "tideLow", label: "Low tide", render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCell(d.tideLows, d.tz, d.sunrise, d.sunset, scales?.curveScale, "low", isPrint) },
+  { key: "tideHigh", label: "High tide", hasData: (d) => !d.tidesMissing, render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCell(d.tideHighs, d.tz, d.sunrise, d.sunset, scales?.curveScale, "high", isPrint) },
+  { key: "tideLow", label: "Low tide", hasData: (d) => !d.tidesMissing, render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCell(d.tideLows, d.tz, d.sunrise, d.sunset, scales?.curveScale, "low", isPrint) },
   {
     key: "tideCurve", label: "Tide curve", cellClass: "tide-curve-cell",
     labelIcon: () => `<span class="tide-ref-input-wrap no-print" title="Enter a critical tide height to plan a departure/return window">` +
@@ -2633,6 +2645,7 @@ const ROW_DEFS = [
       (refTideHeight != null && !isNaN(refTideHeight)
         ? `<span class="tide-ref-print-label">Traced height: ${refTideHeight.toFixed(2)}m</span>`
         : ""),
+    hasData: (d) => !d.tidesMissing,
     render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCurveSvg(d, scales?.curveScale, isPrint ? 4 : 2, isPrint),
   },
   {
@@ -2656,29 +2669,35 @@ const ROW_DEFS = [
   {
     key: "currentTimeline", label: "Current", cellClass: "wind-timeline-cell-wrap",
     labelSub: { screen: "(2h)", print: "(4h)" },
+    hasData: (d) => !!(d.currentHourly && d.currentHourly.some((h) => h.speed != null)),
     render: (d, scales, isPrint) => currentTimelineHtml(d, isPrint ? 4 : 2, isPrint),
   },
   {
     key: "windWaveTimeline", label: "Wind chop", cellClass: "wind-timeline-cell-wrap",
     labelSub: { screen: "(2h)", print: "(4h)" },
+    hasData: (d) => !!(d.waveHourly && d.waveHourly.some((h) => h.windWave != null)),
     render: (d, scales, isPrint) => windWaveTimelineHtml(d, isPrint ? 4 : 2, isPrint, scales?.windWaveTimelineScale),
   },
   {
     key: "waves", label: "Waves / Swell", cellClass: "wave-icon-cell",
+    hasData: (d) => d.waveHeight != null,
     render: (d, scales, isPrint) => waveIconSvg(d, scales?.waveScale, isPrint),
   },
   {
     key: "waveTimeline", label: "Wave", cellClass: "wind-timeline-cell-wrap", printDefault: false,
     labelSub: { screen: "(2h)", print: "(4h)" },
+    hasData: (d) => !!(d.waveHourly && d.waveHourly.some((h) => h.wave != null)),
     render: (d, scales, isPrint) => waveTimelineHtml(d, scales?.waveTimelineScale, isPrint ? 4 : 2, isPrint),
   },
   {
     key: "swellTimeline", label: "Swell", cellClass: "wind-timeline-cell-wrap", printDefault: false,
     labelSub: { screen: "(2h)", print: "(4h)" },
+    hasData: (d) => !!(d.waveHourly && d.waveHourly.some((h) => h.swell != null)),
     render: (d, scales, isPrint) => swellTimelineHtml(d, scales?.waveTimelineScale, isPrint ? 4 : 2, isPrint),
   },
   {
     key: "waveEnergy", label: "Wave energy",
+    hasData: (d) => d.waveEnergy != null,
     render: (d, scales, isPrint) => {
       if (d.waveEnergy == null) return "\u2014";
       const band = waveEnergyBand(d.waveEnergy);
@@ -2687,7 +2706,7 @@ const ROW_DEFS = [
       return `<span class="wave-energy-pill"${waveEnergyStyle(d.waveEnergy, isPrint)}>${Math.round(d.waveEnergy)} kJ</span>${sep}<span class="muted">${labels[band] ?? ""}</span>`;
     },
   },
-  { key: "seaTemp", label: "Sea temp", render: (d) => d.seaTemp == null ? "\u2014" : `${d.seaTemp.toFixed(1)}\u00B0C` },
+  { key: "seaTemp", label: "Sea temp", hasData: (d) => d.seaTemp != null, render: (d) => d.seaTemp == null ? "\u2014" : `${d.seaTemp.toFixed(1)}\u00B0C` },
   {
     key: "weather", label: "Weather",
     render: (d, scales, isPrint) => `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}${d.uvIndexMax != null ? ` ${uvBadgeHtml(d.uvIndexMax)}` : ""}`,
@@ -2743,6 +2762,16 @@ function buildTable(days, className, scales, printRowToggles) {
     // `printRowToggles`/localStorage. Screen view always shows every row
     // regardless of this setting - it only affects the print tables.
     if (isPrint && !printRowToggles?.[row.key]) continue;
+    // Rows that declare `hasData` (currently the marine-derived ones -
+    // waves/swell/wind chop/wave energy/sea temp/current, which all go
+    // genuinely blank rather than partially blank when the Marine API has
+    // nothing for this coordinate/date range - see buildPlan()'s
+    // marineLat/marineLon and the "Waves/swell/sea temp unavailable..."
+    // warning built from weatherNotes) are hidden entirely - on both
+    // screen and print - rather than rendered as an unbroken column of
+    // "\u2014" placeholders, when not even one visible day has real data
+    // for them. The warning banner (#dataWarning) still explains why.
+    if (row.hasData && !days.some((d) => row.hasData(d))) continue;
     const tr = document.createElement("tr");
     const cellClass = row.cellClass ? ` class="${row.cellClass}"` : "";
     const labelSuffix = row.labelSub ? ` <span class="row-label-sub">${isPrint ? row.labelSub.print : row.labelSub.screen}</span>` : "";
