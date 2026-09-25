@@ -1128,4 +1128,22 @@ in `buildPlan()`.
   luminance-based contrast picker, not `TEMP_SCALE`'s own fixed white-text
   index set, since the pill colour here isn't one of a small fixed set of
   discrete colours).
+- **Sun-height/direction icon** (`sunPositionIconSvg()`): the Temperature
+  row previously had visibly empty space under each pill (no icon/bar,
+  unlike Wind/Current), leaving the row taller than its content needed.
+  Rather than shrink the shared `.wind-timeline { height: 2.9rem; }` rule
+  (which all timeline rows use), that space is filled with a small 20px
+  horizon-line icon showing the sun's altitude (dot height, gold above the
+  line/grey below it) and azimuth (a small tick rotated to compass
+  bearing) at that hour — a natural companion to temperature since one
+  broadly tracks the other. Computed entirely locally (no extra network
+  request, unlike Rain/Wind/Temp's values themselves) via `getSunPosition()`
+  in `js/astro.js` (SunCalc-derived sun coordinate math, already used
+  internally for moon calculations, newly exposed via `window.Astro`).
+  `hourlySunForDay(isoDay, lat, lon, tz)` in `js/app.js` calls it once per
+  2h increment, using new `tzOffsetMinutes()`/`localWallTimeToUtc()`
+  helpers (`Intl.DateTimeFormat.formatToParts()` offset-detection trick) to
+  convert the location's local wall-clock hour into a true UTC instant —
+  no such conversion was needed anywhere else in the codebase since
+  Open-Meteo's hourly responses already come back as local-time strings.
 

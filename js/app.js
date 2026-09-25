@@ -636,6 +636,56 @@ function hourlyTempForDay(weatherHourly, isoDay, intervalHours) {
   return out;
 }
 
+// Approximates the UTC offset (in minutes) of an IANA timezone at a given
+// instant, via the standard Intl.DateTimeFormat trick: render that same
+// instant's wall-clock fields *as if* they were UTC, then diff against the
+// real UTC instant. Not exact right at a DST-transition instant itself
+// (rare, and harmless for the decorative sun-position indicator this
+// feeds - see hourlySunForDay()).
+function tzOffsetMinutes(date, tz) {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const parts = dtf.formatToParts(date).reduce((acc, p) => { acc[p.type] = p.value; return acc; }, {});
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, parts.hour === "24" ? 0 : +parts.hour, +parts.minute, +parts.second);
+  return (asUtc - date.getTime()) / 60000;
+}
+
+// Converts a location's local wall-clock instant (calendar day + hour, in
+// timezone `tz`) into a true absolute Date - needed to feed
+// window.Astro.getSunPosition() (which needs a genuine instant, not a
+// "local time" string). Two-pass: first assumes the wall-clock time IS
+// UTC to get a same-day estimate good enough to look up `tz`'s offset at
+// (approximately) that instant, then applies it - offsets only change at
+// rare DST-transition instants, so this converges in one extra step.
+function localWallTimeToUtc(isoDay, hour, tz) {
+  const [y, m, dd] = isoDay.split("-").map(Number);
+  const naiveUtcMs = Date.UTC(y, m - 1, dd, hour, 0, 0);
+  const offsetMin = tzOffsetMinutes(new Date(naiveUtcMs), tz);
+  return new Date(naiveUtcMs - offsetMin * 60000);
+}
+
+// Sun azimuth/altitude at each 2h increment across one calendar day, for
+// the Temperature timeline row's sun-height indicator (see
+// sunPositionIconSvg() and tempTimelineHtml() below) - mirrors
+// hourlyWindForDay()/hourlyTempForDay() etc.'s per-day, per-increment
+// shape, but computed purely locally (window.Astro.getSunPosition(), see
+// js/astro.js) rather than pulled from a weather API response, since sun
+// position is a deterministic function of time + location that's always
+// available, regardless of Open-Meteo's forecast window or Marine API
+// coverage.
+function hourlySunForDay(isoDay, lat, lon, tz, intervalHours) {
+  const step = intervalHours || 2;
+  const out = [];
+  for (let hour = 0; hour < 24; hour += step) {
+    const date = localWallTimeToUtc(isoDay, hour, tz);
+    const pos = window.Astro.getSunPosition(date, lat, lon);
+    out.push({ hour, altitude: pos.altitude, azimuth: pos.azimuth });
+  }
+  return out;
+}
+
 // Same idea as hourlyWindForDay() but for ocean surface current, pulled
 // from the Marine API's hourly ocean_current_velocity/ocean_current_direction
 // (see fetchMarine()) so the "Current" timeline row can show how it shifts
@@ -1111,6 +1161,7 @@ async function buildPlan(settings) {
       windHourly: hourlyWindForDay(weather.hourly, iso),
       rainHourly: hourlyRainForDay(weather.hourly, iso),
       tempHourly: hourlyTempForDay(weather.hourly, iso),
+      sunHourly: hourlySunForDay(iso, lat, lon, tz),
       currentHourly: hourlyCurrentForDay(marine.hourly, iso),
       sunrise,
       sunset,
@@ -2527,14 +2578,49 @@ function rainTimelineHtml(d, intervalHours, isPrint, scale) {
 // pill, reusing the same TEMP_SCALE weather-map ramp (deep violet = cold
 // through gold/orange to magenta = extreme heat) already used for the
 // daily Weather row's max/min pills, just sampled through the day at the
-// same 2h/4h interval as the Wind/Current/Rain timeline rows above. No
-// icon/arrow (temperature has no direction) - just the coloured value
-// itself, plus a matching background-strip gradient like the other
-// timeline rows.
+// same 2h/4h interval as the Wind/Current/Rain timeline rows above.
+// Small "how high, and which direction, is the sun right now" icon for the
+// Temperature timeline row - a horizon line, the sun's position along it
+// scaled by altitude (top of the icon = straight overhead, right at the
+// horizon line = altitude 0°, a little below it once the sun has properly
+// set), and a small triangular tick rotated to the sun's azimuth (compass
+// bearing, 0°=north=up before rotation - same convention as the wind
+// barb/current arrow icons above) sitting on the horizon line itself, so
+// both "how high" and "which way to look" are visible at a glance without
+// needing two separate icons. Altitude is clamped to -15..90° for the
+// vertical mapping - anything deeper below the horizon is already just
+// "night" and doesn't need to keep sinking the dot further down.
+function sunPositionIconSvg(altitude, azimuth) {
+  if (altitude == null) return "";
+  const cx = 11, horizonY = 15;
+  const clampedAlt = Math.max(altitude, -15);
+  const sunY = horizonY - (clampedAlt / 90) * 13;
+  const isUp = altitude > 0;
+  const azTick = azimuth != null
+    ? `<g transform="translate(${cx},${horizonY}) rotate(${azimuth.toFixed(0)})">` +
+      `<polygon points="-1.8,0 1.8,0 0,-4.5" class="sun-pos-az"></polygon></g>`
+    : "";
+  return `<svg class="sun-pos-svg" viewBox="0 0 22 22" role="img" aria-label="Sun height and direction at this time">` +
+    `<line x1="1" y1="${horizonY}" x2="21" y2="${horizonY}" class="sun-pos-horizon"></line>` +
+    azTick +
+    `<circle cx="${cx}" cy="${sunY.toFixed(1)}" r="3" class="${isUp ? "sun-pos-dot sun-pos-dot-up" : "sun-pos-dot sun-pos-dot-down"}"></circle>` +
+    `</svg>`;
+}
+
+// Air temperature timeline row - basically a coloured pill per increment
+// mirroring the daily Weather row's max/min pills, just sampled through
+// the day at the same 2h/4h interval as the Wind/Current/Rain timeline
+// rows above, plus a matching background-strip gradient like the other
+// timeline rows. Also carries the sun-height/direction icon
+// (sunPositionIconSvg() above, from `d.sunHourly` - see hourlySunForDay())
+// underneath the temperature pill, since the two naturally read together
+// (temperature broadly tracks how high the sun is) and it fills what would
+// otherwise be an empty gap under a plain value-only row.
 function tempTimelineHtml(d, intervalHours, isPrint) {
   if (!d.tempHourly || !d.tempHourly.length) return '<span class="muted">\u2014</span>';
   const step = intervalHours || 2;
   const hours = d.tempHourly.filter((h) => h.hour % step === 0);
+  const sunByHour = new Map((d.sunHourly || []).map((h) => [h.hour, h]));
   const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.temp != null ? tempColor(h.temp) : null, isPrint);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
@@ -2542,9 +2628,11 @@ function tempTimelineHtml(d, intervalHours, isPrint) {
     const val = h.temp;
     const color = val != null ? tempColor(val) : null;
     const pillStyle = !isPrint && color ? `background-color:${color};color:${readableTextColor(color)}` : "";
+    const sun = sunByHour.get(h.hour);
     return `<div class="wind-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wind-timeline-speed temp-timeline-value" style="${pillStyle}">${val != null ? Math.round(val) + "\u00B0" : "\u2014"}</div>` +
+      (isPrint || !sun ? "" : sunPositionIconSvg(sun.altitude, sun.azimuth)) +
       `</div>`;
   }).join("");
   return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;

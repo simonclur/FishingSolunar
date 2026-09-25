@@ -1,12 +1,15 @@
 // js/astro.js
 //
-// Moon position / rise / set / illumination, adapted from SunCalc
-// (https://github.com/mourner/suncalc), Copyright (c) 2026 Volodymyr Agafonkin,
-// BSD-2-Clause licence (see docs/THIRD_PARTY_NOTICES.md). Trimmed to the moon-only
-// functions this app needs (no sun-position code — sunrise/sunset here comes from
-// the Open-Meteo weather API instead).
+// Moon position / rise / set / illumination, plus sun azimuth/altitude,
+// adapted from SunCalc (https://github.com/mourner/suncalc), Copyright (c)
+// 2026 Volodymyr Agafonkin, BSD-2-Clause licence (see
+// docs/THIRD_PARTY_NOTICES.md). Sunrise/sunset times themselves still come
+// from the Open-Meteo weather API, not from here - getSunPosition() only
+// answers "how high/which direction is the sun right now" for the
+// Temperature timeline row's sun-height indicator (see tempTimelineHtml()
+// in js/app.js), a different question to precise rise/set instants.
 //
-// Exposed as window.Astro = { getMoonPosition, getMoonTimes, getMoonIllumination }
+// Exposed as window.Astro = { getMoonPosition, getMoonTimes, getMoonIllumination, getSunPosition }
 
 (function () {
   const { sin, cos, tan, asin, atan2: atan, acos, sqrt, abs, round, PI } = Math;
@@ -163,6 +166,30 @@
     };
   }
 
+  // Sun azimuth/altitude for a given instant - reuses the same
+  // sunCoords()/siderealTime()/altitude()/azimuth() building blocks already
+  // needed above for moon illumination (getMoonIllumination() calls
+  // sunCoords() to get the sun's position relative to the moon), just
+  // combined into a standalone position for an observer at lat/lng - the
+  // sun-position half of SunCalc's getPosition(), dropped from the trimmed
+  // moon-only port (see file header) since sunrise/sunset used to come
+  // from the weather API alone. No parallax correction (negligible at the
+  // sun's distance, unlike the moon) and no atmospheric-refraction bump -
+  // this is the true geometric altitude, good enough for the "how high/
+  // which direction is the sun" timeline indicator, not for precise
+  // sunrise/sunset instants (those still come from Open-Meteo).
+  function getSunPosition(date, lat, lng) {
+    const lw = rad * -lng;
+    const phi = rad * lat;
+    const d = toDays(date);
+    const c = sunCoords(d);
+    const H = siderealTime(d, lw) - c.ra;
+    return {
+      azimuth: azimuth(H, phi, c.dec),
+      altitude: altitude(H, phi, c.dec) / rad
+    };
+  }
+
   function getMoonIllumination(date) {
     const d = toDaysTT(toDays(date));
     const s = sunCoords(d);
@@ -244,5 +271,5 @@
     return result;
   }
 
-  window.Astro = { getMoonPosition, getMoonTimes, getMoonIllumination };
+  window.Astro = { getMoonPosition, getMoonTimes, getMoonIllumination, getSunPosition };
 })();

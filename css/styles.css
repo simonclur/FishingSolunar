@@ -611,6 +611,17 @@ table.planner-table {
 .current-arrow-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; position: relative; z-index: 1; }
 .current-arrow-mini { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 
+/* Sun-height/direction icon under each Temperature timeline pill (see
+   sunPositionIconSvg()) - a horizon line, a dot sliding up/down it with
+   altitude, and a small tick on the line rotated to azimuth. Sized like
+   the other mini timeline icons (20px) so the row doesn't grow. */
+.sun-pos-svg { width: 20px; height: 20px; display: block; overflow: visible; margin-top: 0.05rem; }
+.sun-pos-horizon { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.sun-pos-dot { stroke: none; }
+.sun-pos-dot-up { fill: #f5a623; }
+.sun-pos-dot-down { fill: #64748b; opacity: 0.6; }
+.sun-pos-az { fill: var(--line); }
+
 /* Wave/Swell/Wind chop timeline rows: use the same direction-scaled arrow
    as the Current row (miniCurrentArrowSvg()) rather than a height bar, so
    direction is visible too and the arrow height doesn't depend on a fixed
