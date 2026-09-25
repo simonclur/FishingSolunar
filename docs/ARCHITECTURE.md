@@ -1021,11 +1021,45 @@ give useful results:
   key (`marineCacheKeyBase`) separate from the weather/tide cache key
   (which is still keyed on the entered lat/lon) since the two coordinate
   pairs can now differ.
-- Surfaced to the user via the header's "last updated" label (e.g.
-  `Weather: <entered location> · Tide/Marine: Southport, Queensland,
-  Australia (~43 km)`) and the tide-source note under the settings panel,
-  both only shown when the resolved station differs from the entered
-  location.
+- Surfaced to the user via the `#locationSubtitle` line under the header
+  title (see next section) and the tide-source note under the settings
+  panel, both only shown when the resolved station differs from the
+  entered location.
+
+## Location naming: weather place name vs tide/marine station
+
+Manually-entered coordinates (typed lat/lon, GPS, or a shared link without
+an explicit `name`) no longer borrow the nearest tide station's name for
+the location itself - that used to wrongly imply weather was sourced from
+that named town too. Instead:
+
+- `syncNearestPresetAndName(lat, lon, baseLabel)` immediately shows a
+  generic placeholder (`baseLabel`, e.g. "Selected location"/"My location
+  (GPS)"/"Shared location") in `#locationName`/the header title, while
+  still auto-selecting the nearest bundled preset in the `#locationPreset`
+  dropdown purely for tide/marine reference-point resolution (see previous
+  section).
+- `applyReverseGeocodedName(lat, lon)` then runs in the background
+  (fire-and-forget, never awaited) and calls `reverseGeocodeLatLon()`,
+  which looks up the actual place name at those exact coordinates via
+  BigDataCloud's free, key-less, CORS-enabled `reverse-geocode-client`
+  endpoint - the only piece of location info that genuinely needs an
+  external name lookup, confirming the weather shown really is for
+  Open-Meteo's grid point nearest the place the user meant. If it resolves
+  (and the coordinates haven't since moved on to something else), it
+  overwrites `#locationName` with the resolved place name and triggers a
+  second, cheap (mostly cache-hit) `refresh()` to repaint it everywhere
+  (header title, tab title, saved settings). It fails silently - offline,
+  timeout (6s), or no result for a remote/oceanic point - leaving the
+  placeholder label in place.
+- A shared link's explicit `name` query param is never overridden by
+  reverse geocoding (respects the sharer's deliberate choice); only the
+  default "Shared location" placeholder is eligible.
+- The resolved tide/marine reference station (which may be a different,
+  real coastal town) is shown separately, in a half-size `#locationSubtitle`
+  line under the header title via `updateLocationSubtitle()` - hidden
+  whenever it isn't useful (no station resolved, or its name already
+  matches the weather location name, e.g. an exact bundled-preset pick).
 
 ## Adding a data field
 

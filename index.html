@@ -10,7 +10,10 @@
 <body>
 
 <header class="app-header no-print">
-  <h1 id="locationTitle">FishingSolunar</h1>
+  <div class="header-title-group">
+    <h1 id="locationTitle">FishingSolunar</h1>
+    <div id="locationSubtitle" class="location-subtitle" hidden></div>
+  </div>
   <div class="header-actions">
     <span id="lastUpdatedLabel" class="last-updated" hidden></span>
     <button id="forceRefreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh (clears cached data and reloads)">&#8635;</button>
@@ -104,6 +107,7 @@
 <footer class="app-footer no-print">
   <p>Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (weather, waves, sea temp) &middot;
   <a href="https://www.worldtides.info/" target="_blank" rel="noopener">WorldTides</a> (tides) &middot;
+  <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a> (place names for entered coordinates) &middot;
   moon phase &amp; solunar rating computed locally. Cross-check tides against the
   <a href="https://www.bom.gov.au/ntc/IDO59001/IDO59001_2026_QLD_TP035.pdf" target="_blank" rel="noopener">BOM tide table PDF</a>.
   See <a href="docs/OVERVIEW.md" target="_blank" rel="noopener">docs</a> for details.</p>

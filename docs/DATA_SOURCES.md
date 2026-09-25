@@ -249,6 +249,22 @@ and that's clearly flagged rather than silently shown as current.
   - This is a **reasonable approximation**, not identical to proprietary
     solunar tables/apps — documented as such in the UI (info tooltip).
 
+## 6. Location name lookup — BigDataCloud reverse geocoding
+
+- Used only to turn a manually-entered lat/lon (typed pair, GPS fix, or a
+  shared link without an explicit name) into a human-readable place name
+  for display — it plays no part in fetching weather/tide/marine data
+  itself, which always use raw coordinates directly.
+- `https://api.bigdatacloud.net/data/reverse-geocode-client` — free,
+  key-less, CORS-enabled, designed for exactly this client-side use case.
+  Called from `reverseGeocodeLatLon()`/`applyReverseGeocodedName()` in
+  `js/app.js`; 6-second timeout, fails silently (leaves the generic
+  placeholder label in place) if offline, slow, or no result (e.g. a
+  remote/oceanic point).
+- Runs in the background after the placeholder name is already showing, so
+  it never blocks the initial weather/tide fetch; see "Location naming:
+  weather place name vs tide/marine station" in `docs/ARCHITECTURE.md`.
+
 ## Known limitations
 
 - Tide data: local files only exist for stations bundled in `data/tides/`

@@ -54,8 +54,24 @@ body {
 .app-header h1 {
   font-size: 1.1rem;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.header-title-group {
   flex: 1 1 auto;
   min-width: 0;
+}
+/* Tide/marine reference-station line shown under the header title
+   whenever it differs from the location name (e.g. a custom lat/lon or
+   GPS fix whose weather is fetched for the exact point entered, but whose
+   tide highs/lows and wave/swell/sea-temp/current data come from the
+   nearest bundled coastal station instead - see buildPlan()'s
+   `marineLat`/`marineLon` in js/app.js). Half the title's font size since
+   it's secondary/contextual info, not the primary location name. */
+.location-subtitle {
+  font-size: 0.55rem;
+  color: var(--line);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

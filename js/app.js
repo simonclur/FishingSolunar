@@ -117,10 +117,17 @@ function syncLatLonDisplay() {
 
 // Shared by useGpsLocation() and onLatLonTextChange(): given a lat/lon that
 // didn't come from picking an exact preset, finds the nearest bundled
-// location (used as the local weather/tide reference point), auto-selects
-// it in the "Preset location" dropdown for reference, and builds a name
-// like "<baseLabel> - Southport, Queensland, Australia - ~29km away" so
-// it's obvious at a glance which local data is in play. Falls back to just
+// location (used as the local *tide/marine* reference point - see
+// buildPlan()'s `marineLat`/`marineLon`) and auto-selects it in the
+// "Preset location" dropdown for reference. The location *name* itself is
+// left as plain `baseLabel` (e.g. "Selected location") rather than baking
+// the nearest preset's town name into it - weather is fetched for the
+// exact entered lat/lon (there's no "station" concept for it), so folding
+// the tide station's name into the location name implied weather was
+// sourced from there too. The resolved tide/marine station is instead
+// shown as its own subtitle line under the header title (see
+// `updateLocationSubtitle()`) and the "Nearest tide station" summary line
+// under the lat/lon fields (`updateNearestInfo()`). Falls back to just
 // `baseLabel` if no preset is found (shouldn't normally happen - the
 // bundled list covers the whole coastline).
 function syncNearestPresetAndName(lat, lon, baseLabel) {
@@ -136,10 +143,59 @@ function syncNearestPresetAndName(lat, lon, baseLabel) {
   if (refreshDistanceUiFn) refreshDistanceUiFn();
   const nearest = window.LocationUtils.presetsByDistance(lat, lon)[0];
   if (nearest) $("locationPreset").value = nearest.id;
-  $("locationName").value = nearest
-    ? `${baseLabel} - ${nearest.name} - ~${Math.round(nearest.distanceKm)}km away`
-    : baseLabel;
+  $("locationName").value = baseLabel;
   return nearest;
+}
+
+// Reverse-geocodes a lat/lon pair into a human-readable place name (suburb/
+// town, state/region, country) using BigDataCloud's free, key-less,
+// CORS-enabled "reverse-geocode-client" endpoint - the one piece of
+// location info that genuinely needs a name lookup, since weather and
+// tide/marine data are both already fetched directly from raw coordinates.
+// Returns null (never throws) on any failure - offline, timeout, no result
+// for remote/oceanic points - so callers can just keep whatever generic
+// label they already showed.
+async function reverseGeocodeLatLon(lat, lon) {
+  if (navigator.onLine === false) return null; // don't bother if we already know we're offline
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
+  try {
+    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const place = data.locality || data.city || data.principalSubdivision;
+    if (!place) return null;
+    const parts = [place];
+    if (data.principalSubdivision && data.principalSubdivision !== place) parts.push(data.principalSubdivision);
+    if (data.countryName) parts.push(data.countryName);
+    return parts.join(", ");
+  } catch (err) {
+    return null; // network error, timeout, offline, malformed response, etc.
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// After a manual/GPS/shared-link coordinate entry has already shown a
+// generic placeholder name (via syncNearestPresetAndName), swap it for the
+// real place name at those exact coordinates once reverse geocoding
+// resolves - this is what actually confirms the weather being displayed
+// (from Open-Meteo's grid) is for the place the user meant, rather than a
+// generic "Selected location"/"My location (GPS)" label. Runs in the
+// background (fire-and-forget, never awaited by its callers) so it never
+// delays the initial refresh(); if it resolves after that refresh() has
+// already rendered, it triggers one more cheap follow-up refresh() (mostly
+// cache hits) purely to repaint the corrected name everywhere (header
+// title, tab title, saved settings).
+async function applyReverseGeocodedName(lat, lon) {
+  const resolvedName = await reverseGeocodeLatLon(lat, lon);
+  if (!resolvedName) return;
+  // Discard a stale result if the coordinates moved on again while this
+  // lookup was in flight (e.g. the user pasted a second pair quickly).
+  if (parseFloat($("lat").value) !== lat || parseFloat($("lon").value) !== lon) return;
+  $("locationName").value = resolvedName;
+  refresh();
 }
 
 // Fires when the user edits the visible combined field directly (paste or
@@ -164,6 +220,10 @@ function onLatLonTextChange() {
   // dropdown on whatever was previously picked and the name field blank/
   // stale.
   syncNearestPresetAndName(parsed.lat, parsed.lon, "Selected location");
+  // Kick off a background lookup of the actual place name at these exact
+  // coordinates (see applyReverseGeocodedName()) - not awaited, so it never
+  // delays the refresh() below.
+  applyReverseGeocodedName(parsed.lat, parsed.lon);
   // Pasting/typing a valid coordinate pair should immediately show that
   // location's weather + tides, matching the preset-dropdown behaviour,
   // instead of leaving the old data on screen until "Update" is clicked.
@@ -2865,6 +2925,7 @@ function wireScrollAxisLock(container) {
 function render(days, settings, tideMeta) {
   lastRenderArgs = { days, settings, tideMeta };
   $("locationTitle").textContent = settings.name;
+  updateLocationSubtitle(settings.name, tideMeta.tideStationInfo);
   document.title = `${settings.name} \u2014 FishingSolunar`;
 
   const printRowToggles = loadPrintRowToggles();
@@ -2953,8 +3014,8 @@ function render(days, settings, tideMeta) {
     noteEl.textContent = "Tide highs/lows: no data source available for this location yet.";
   }
 
-  updateStaleBadge(tideMeta.dataFromCache, tideMeta.oldestFetchedAt, settings.name, tideMeta.tideStationInfo);
-  updateLastUpdatedLabel(tideMeta.oldestFetchedAt, settings.name, tideMeta.tideStationInfo);
+  updateStaleBadge(tideMeta.dataFromCache, tideMeta.oldestFetchedAt);
+  updateLastUpdatedLabel(tideMeta.oldestFetchedAt);
 }
 
 // ---------- stale-data badge (bottom-right) ----------
@@ -2967,8 +3028,8 @@ function render(days, settings, tideMeta) {
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000; // 6 hours
 let lastTideMetaForBadge = null;
 
-function updateStaleBadge(dataFromCache, oldestFetchedAt, weatherLocationName, tideStationInfo) {
-  lastTideMetaForBadge = { dataFromCache, oldestFetchedAt, weatherLocationName, tideStationInfo };
+function updateStaleBadge(dataFromCache, oldestFetchedAt) {
+  lastTideMetaForBadge = { dataFromCache, oldestFetchedAt };
   const badge = $("staleBadge");
   const ageMs = oldestFetchedAt ? Date.now() - oldestFetchedAt : 0;
   if (dataFromCache && ageMs > STALE_AFTER_MS) {
@@ -2996,8 +3057,13 @@ const lastUpdatedFmt = new Intl.DateTimeFormat("en-AU", { day: "numeric", month:
 // (waves/swell/sea temp/current) fetch, which can differ from the weather
 // location whenever it's a nearest-match rather than an exact preset (e.g.
 // weather for "Fingal Head, NSW" alongside tides/marine data from
-// "Southport, Queensland, Australia (~29 km away)").
-function updateLastUpdatedLabel(oldestFetchedAt, weatherLocationName, tideStationInfo) {
+// `weatherLocationName` is simply the location name/coordinates the form is
+// set to (Open-Meteo has no "station" concept - it evaluates weather for
+// the exact lat/lon given, so that name *is* the weather source). The
+// tide/marine reference station (see updateLocationSubtitle() below) is
+// shown separately under the header title, so this label now only needs
+// to carry the fetch timestamp.
+function updateLastUpdatedLabel(oldestFetchedAt) {
   const el = $("lastUpdatedLabel");
   if (!oldestFetchedAt) {
     el.hidden = true;
@@ -3005,16 +3071,31 @@ function updateLastUpdatedLabel(oldestFetchedAt, weatherLocationName, tideStatio
   }
   const ageMs = Date.now() - oldestFetchedAt;
   const timeText = ageMs < 60 * 1000 ? "Just now" : `Updated: ${lastUpdatedFmt.format(oldestFetchedAt)}`;
-
-  let locationText = "";
-  if (weatherLocationName && tideStationInfo && tideStationInfo.name !== weatherLocationName) {
-    const distanceText = tideStationInfo.auto ? ` (~${Math.round(tideStationInfo.distanceKm)} km)` : "";
-    locationText = ` \u00b7 Weather: ${weatherLocationName} \u00b7 Tide/Marine: ${tideStationInfo.name}${distanceText}`;
-  } else if (weatherLocationName) {
-    locationText = ` \u00b7 ${weatherLocationName}`;
-  }
-  el.textContent = timeText + locationText;
+  el.textContent = timeText;
   el.title = el.textContent;
+  el.hidden = false;
+}
+
+// ---------- location subtitle (header, under the title) ----------
+// `tideStationInfo` (see resolveTideStation()) names the actual bundled
+// tide-station CSV backing the tide highs/lows *and* (see buildPlan()'s
+// `marineLat`/`marineLon`) the coordinates used for the Marine API
+// (waves/swell/sea temp/current) fetch - which can differ from the
+// weather location whenever it's a nearest-match rather than an exact
+// preset (e.g. weather for a custom "Selected location" lat/lon, but
+// tides/waves/swell/sea temp/current from "Southport, Queensland,
+// Australia (~29 km away)"). Shown as a second, half-size line under the
+// header title only when it actually differs from the location name -
+// an exact preset pick (where the location name already *is* the station
+// name, 0km away) has nothing extra to add here.
+function updateLocationSubtitle(weatherLocationName, tideStationInfo) {
+  const el = $("locationSubtitle");
+  if (!tideStationInfo || tideStationInfo.name === weatherLocationName) {
+    el.hidden = true;
+    return;
+  }
+  const distanceText = tideStationInfo.auto ? ` (~${Math.round(tideStationInfo.distanceKm)} km away)` : "";
+  el.textContent = `Tide/Marine: ${tideStationInfo.name}${distanceText}`;
   el.hidden = false;
 }
 
@@ -3255,6 +3336,12 @@ function useGpsLocation() {
       // before (that name belongs to the old location, not this GPS fix) -
       // the user can still rename afterwards.
       syncNearestPresetAndName(pos.coords.latitude, pos.coords.longitude, "My location (GPS)");
+      // Background lookup of the actual place name at this GPS fix - not
+      // awaited, so it never delays the refresh() below. Uses the
+      // (already-rounded) #lat/#lon field values rather than the raw GPS
+      // coords so this matches what applyReverseGeocodedName()'s later
+      // staleness check reads back from those same fields.
+      applyReverseGeocodedName(parseFloat($("lat").value), parseFloat($("lon").value));
 
       statusEl.textContent = `Location found (accuracy ~${Math.round(pos.coords.accuracy)} m). Refreshing\u2026`;
       // Weather/marine data is fetched for whatever exact lat/lon is in the
@@ -3375,6 +3462,11 @@ function applySharedLocationAndKeyFromUrl() {
     // certainly relates to a different, previous location - so resolve
     // fresh, the same way GPS/pasted coordinates already do.
     syncNearestPresetAndName(urlLat, urlLon, urlName ? urlName.trim() : "Shared location");
+    // Only reverse-geocode a real place name in when the link didn't
+    // already carry an explicit name - an explicit `name` param was chosen
+    // deliberately by whoever shared the link, so it should win over an
+    // auto-resolved one.
+    if (!urlName) applyReverseGeocodedName(parseFloat($("lat").value), parseFloat($("lon").value));
   }
 
   ["worldTidesKey", "lat", "lon", "name"].forEach((k) => params.delete(k));
@@ -3500,8 +3592,8 @@ function init() {
   // so "~6h ago" keeps advancing while the tab stays open.
   setInterval(() => {
     if (lastTideMetaForBadge) {
-      updateStaleBadge(lastTideMetaForBadge.dataFromCache, lastTideMetaForBadge.oldestFetchedAt, lastTideMetaForBadge.weatherLocationName, lastTideMetaForBadge.tideStationInfo);
-      updateLastUpdatedLabel(lastTideMetaForBadge.oldestFetchedAt, lastTideMetaForBadge.weatherLocationName, lastTideMetaForBadge.tideStationInfo);
+      updateStaleBadge(lastTideMetaForBadge.dataFromCache, lastTideMetaForBadge.oldestFetchedAt);
+      updateLastUpdatedLabel(lastTideMetaForBadge.oldestFetchedAt);
     }
   }, 5 * 60 * 1000);
 
