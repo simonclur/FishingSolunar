@@ -1004,3 +1004,40 @@ an HTML string — it will automatically appear in both the interactive table
 and both print tables. If the value comes from a new API field, add it to
 the relevant `fetch*()` call's query string and to the per-day object built
 in `buildPlan()`.
+
+## Rain and Temperature timeline rows
+
+- **Rain (2h)/(4h)** (`rainTimelineHtml()`) and **Temperature (2h)/(4h)**
+  (`tempTimelineHtml()`) reuse the exact same layout/interval machinery as
+  the Wind/Current/Wave timeline rows above (`.wind-timeline`/
+  `.wind-timeline-cell`, `timelineWrapAttrs()`, `timelineGradientBgStrips()`
+  for the coloured background strip, 2h on screen / 4h in print,
+  percentage-of-day left positioning so all timeline rows and the tide
+  axis line up on the same time grid). Both are screen-only by default
+  (`printDefault: false`, like Wave/Swell) since they add two more rows to
+  an already-tall table.
+- Sourced from the same cached Open-Meteo weather request as Wind (2h) -
+  `hourlyRainForDay()`/`hourlyTempForDay()` pull `precipitation`/
+  `temperature_2m` out of `&hourly=...` at 2h resolution, mirroring
+  `hourlyWindForDay()`. No extra network request is needed.
+- **Rain** uses a new `RAIN_SCALE` (pale/dry through mid-blue to deep
+  indigo/violet for downpour amounts) rather than the green→red ramps used
+  for wind/current/wave severity — a monochromatic "how wet" ramp is a
+  clearer fit for rainfall amount, which isn't inherently hazardous at
+  these scales, matching common rainfall-accumulation map conventions.
+  Since rainfall has no direction, each cell shows a `miniRainBarBg()`
+  height-bar (mirrors `miniHeightBarBg()`) instead of a direction arrow,
+  scaled against a fixed-across-the-14-day-window `rainTimelineScale.max`
+  (mirrors `windWaveTimelineScale`'s "flat day looked as tall as a rough
+  day" fix) so a light-shower day doesn't visually read as heavy as a
+  genuine downpour day.
+- **Temperature** reuses the existing `TEMP_SCALE` weather-map ramp (deep
+  violet = cold → gold/orange → magenta = extreme heat) already used for
+  the daily Weather row's max/min pills, so the same colour always means
+  the same real-world temperature across both rows. No icon/bar — each
+  cell is just the rounded °C value in a `.temp-timeline-value` pill
+  coloured via `tempColor()`/`readableTextColor()` (the general
+  luminance-based contrast picker, not `TEMP_SCALE`'s own fixed white-text
+  index set, since the pill colour here isn't one of a small fixed set of
+  discrete colours).
+

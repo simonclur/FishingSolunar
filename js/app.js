@@ -492,7 +492,7 @@ async function fetchWeather(lat, lon, startIso, endIso, tz) {
   const build = (s, e) => `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&daily=temperature_2m_max,temperature_2m_min,windspeed_10m_max,windspeed_10m_mean,windgusts_10m_max,winddirection_10m_dominant,` +
     `sunrise,sunset,precipitation_sum,precipitation_probability_max,weathercode,uv_index_max` +
-    `&hourly=windspeed_10m,winddirection_10m,pressure_msl` +
+    `&hourly=windspeed_10m,winddirection_10m,pressure_msl,temperature_2m,precipitation` +
     `&start_date=${s}&end_date=${e}&timezone=${encodeURIComponent(tz)}`;
   let res = await fetch(build(startIso, endIso));
   if (!res.ok) {
@@ -533,6 +533,45 @@ function hourlyWindForDay(weatherHourly, isoDay, intervalHours) {
     const hour = parseInt(times[i].slice(11, 13), 10);
     if (hour % step !== 0) continue;
     out.push({ hour, dir: dirs[i], speed: speeds[i] });
+  }
+  return out;
+}
+
+// Same idea as hourlyWindForDay() but for hourly precipitation (mm falling
+// in that hour), pulled from Open-Meteo's `&hourly=...,precipitation` field
+// alongside wind/pressure in the same cached weather request - feeds the
+// "Rain" timeline row so it's clear *when* through the day rain is likely,
+// not just the daily total shown by the existing Rain row.
+function hourlyRainForDay(weatherHourly, isoDay, intervalHours) {
+  const step = intervalHours || 2;
+  if (!weatherHourly || !weatherHourly.time) return [];
+  const times = weatherHourly.time;
+  const rain = weatherHourly.precipitation;
+  const out = [];
+  for (let i = 0; i < times.length; i++) {
+    if (!times[i].startsWith(isoDay)) continue;
+    const hour = parseInt(times[i].slice(11, 13), 10);
+    if (hour % step !== 0) continue;
+    out.push({ hour, rain: rain ? rain[i] : null });
+  }
+  return out;
+}
+
+// Same idea again, for hourly air temperature (`&hourly=...,temperature_2m`)
+// - feeds the "Temperature" timeline row so the day's warm-up/cool-down
+// curve is visible hour-by-hour, complementing the daily max/min shown by
+// the existing Weather row.
+function hourlyTempForDay(weatherHourly, isoDay, intervalHours) {
+  const step = intervalHours || 2;
+  if (!weatherHourly || !weatherHourly.time) return [];
+  const times = weatherHourly.time;
+  const temps = weatherHourly.temperature_2m;
+  const out = [];
+  for (let i = 0; i < times.length; i++) {
+    if (!times[i].startsWith(isoDay)) continue;
+    const hour = parseInt(times[i].slice(11, 13), 10);
+    if (hour % step !== 0) continue;
+    out.push({ hour, temp: temps ? temps[i] : null });
   }
   return out;
 }
@@ -881,7 +920,7 @@ async function cachedFetch(cacheKey, fetcher) {
 // instead of aborting the whole page. This gives buildPlan() an empty but
 // well-shaped result to index into (all lookups already treat a missing
 // `wIdx`/`mIdx` as "no data for this day" and render "\u2014").
-const EMPTY_WEATHER = { daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], windspeed_10m_max: [], windspeed_10m_mean: [], windgusts_10m_max: [], winddirection_10m_dominant: [], sunrise: [], sunset: [], precipitation_sum: [], precipitation_probability_max: [], weathercode: [], uv_index_max: [] }, hourly: { time: [], windspeed_10m: [], winddirection_10m: [], pressure_msl: [] } };
+const EMPTY_WEATHER = { daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], windspeed_10m_max: [], windspeed_10m_mean: [], windgusts_10m_max: [], winddirection_10m_dominant: [], sunrise: [], sunset: [], precipitation_sum: [], precipitation_probability_max: [], weathercode: [], uv_index_max: [] }, hourly: { time: [], windspeed_10m: [], winddirection_10m: [], pressure_msl: [], temperature_2m: [], precipitation: [] } };
 const EMPTY_MARINE = { daily: { time: [], wave_height_max: [], wave_direction_dominant: [], wave_period_max: [], swell_wave_height_max: [], swell_wave_direction_dominant: [], swell_wave_period_max: [], wind_wave_height_max: [], wind_wave_direction_dominant: [], wind_wave_period_max: [] }, hourly: { time: [], sea_surface_temperature: [], ocean_current_velocity: [], ocean_current_direction: [], wave_height: [], wave_direction: [], swell_wave_height: [], swell_wave_direction: [], wind_wave_height: [], wind_wave_direction: [] } };
 
 async function buildPlan(settings) {
@@ -990,6 +1029,8 @@ async function buildPlan(settings) {
       windAvg: wIdx >= 0 ? weather.daily.windspeed_10m_mean[wIdx] : null,
       windGust: wIdx >= 0 ? weather.daily.windgusts_10m_max[wIdx] : null,
       windHourly: hourlyWindForDay(weather.hourly, iso),
+      rainHourly: hourlyRainForDay(weather.hourly, iso),
+      tempHourly: hourlyTempForDay(weather.hourly, iso),
       currentHourly: hourlyCurrentForDay(marine.hourly, iso),
       sunrise,
       sunset,
@@ -1047,6 +1088,11 @@ async function buildPlan(settings) {
   const waveTimelineScale = { max: Math.max(0.3, ...allHourlyWaveSwell) * 1.1 };
   const allHourlyWindWave = days.flatMap((d) => (d.waveHourly || []).map((h) => h.windWave)).filter((v) => v != null);
   const windWaveTimelineScale = { max: Math.max(0.3, ...allHourlyWindWave) * 1.1 };
+  // Same fixed-across-the-window approach for the Rain timeline row, so a
+  // light-shower day doesn't visually read as heavy as a genuine downpour
+  // day just because each day self-scaled to its own hourly max.
+  const allHourlyRain = days.flatMap((d) => (d.rainHourly || []).map((h) => h.rain)).filter((v) => v != null);
+  const rainTimelineScale = { max: Math.max(0.5, ...allHourlyRain) * 1.1 };
 
   // Oldest fetchedAt across everything we actually used (fresh network calls
   // count as "now"; cached fallbacks carry their original timestamp) tells
@@ -1082,6 +1128,7 @@ async function buildPlan(settings) {
     waveScale,
     waveTimelineScale,
     windWaveTimelineScale,
+    rainTimelineScale,
     dataFromCache: anyFromCache,
     oldestFetchedAt,
   };
@@ -2226,6 +2273,27 @@ const WAVE_HEIGHT_SCALE = [
   { max: Infinity, color: "#b40032" }, // heavy - deep red
 ];
 
+// Rainfall-amount colour scale (mm falling within one timeline interval),
+// used by the "Rain" timeline row. Follows the common precipitation-map
+// convention of a monochromatic blue ramp (pale/dry through to deep
+// indigo/violet for downpour amounts) rather than reusing the
+// green->red wind/current/wave ramps above - those read as "calm->severe"
+// for a hazard, whereas rain amount isn't inherently hazardous at these
+// scales, so a blue "how wet" ramp (as used by most rainfall-accumulation
+// radar legends) is a clearer fit. Breakpoints are in mm/interval, chosen
+// to span drizzle (<0.2mm) through to tropical-downpour amounts (10mm+ in
+// a single 2h slot).
+const RAIN_SCALE = [
+  { max: 0, color: "#eef2f7" },     // none - pale neutral (no rain expected)
+  { max: 0.2, color: "#cfe3f7" },   // trace/drizzle - very pale blue
+  { max: 0.5, color: "#8fc4ef" },   // light - pale blue
+  { max: 1, color: "#4fa3e0" },     // light-moderate - blue
+  { max: 2, color: "#1f79c9" },     // moderate - mid blue
+  { max: 5, color: "#0d4f9e" },     // heavy - dark blue
+  { max: 10, color: "#3730a3" },    // very heavy - indigo
+  { max: Infinity, color: "#6b1fa8" }, // torrential - violet
+];
+
 // Thin height-bar rendered *behind* a Wave/Swell/Wind chop arrow, scaled
 // 0..100% of that row's `maxH`, so the arrow's direction/magnitude styling
 // is kept but the eye can also compare relative heights at a glance the
@@ -2325,6 +2393,71 @@ function windWaveTimelineHtml(d, intervalHours, isPrint, scale) {
   return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
 }
 
+// Thin rainfall-amount bar, mirroring miniHeightBarBg() above but coloured
+// via RAIN_SCALE (blue "how wet" ramp) instead of WAVE_HEIGHT_SCALE - used
+// in place of a direction arrow in the Rain timeline row below, since
+// rainfall (unlike wind/current/wave) has no direction to show.
+function miniRainBarBg(val, maxR, isPrint) {
+  if (val == null || !maxR) return "";
+  const pct = Math.min(Math.max(val / maxR, 0), 1) * 100;
+  const fillColor = isPrint ? "#999" : interpolatedScaleColor(RAIN_SCALE, val);
+  return `<div class="wave-timeline-barbg"><div class="wave-timeline-barbg-fill" style="height:${pct.toFixed(0)}%;background:${fillColor}"></div></div>`;
+}
+
+// "Rain" timeline row: hourly precipitation amount (mm per interval) as a
+// colour-coded bar + value, same layout/interval convention as the
+// Wave/Swell/Wind chop rows above (timelineGradientBgStrips() background +
+// per-cell bar), but using the RAIN_SCALE blue ramp and no direction arrow
+// (rainfall has no direction). Complements the existing daily Rain row's
+// total-for-the-day figure by showing *when* through the day it's likely
+// to fall.
+function rainTimelineHtml(d, intervalHours, isPrint, scale) {
+  if (!d.rainHourly || !d.rainHourly.length) return '<span class="muted">\u2014</span>';
+  const step = intervalHours || 2;
+  const hours = d.rainHourly.filter((h) => h.hour % step === 0);
+  const maxR = scale?.max || Math.max(0.5, ...hours.map((h) => h.rain || 0));
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.rain != null ? interpolatedScaleColor(RAIN_SCALE, h.rain) : null, isPrint);
+  const cells = hours.map((h) => {
+    const hh = String(h.hour).padStart(2, "0");
+    const leftPct = (h.hour / 24) * 100;
+    const val = h.rain;
+    const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(RAIN_SCALE, val)) : "";
+    return `<div class="wind-timeline-cell wave-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
+      `<div class="wind-timeline-hour">${hh}</div>` +
+      `<div class="wave-timeline-arrow-wrap">${miniRainBarBg(val, maxR, isPrint)}</div>` +
+      `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `</div>`;
+  }).join("");
+  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
+}
+
+// "Temperature" timeline row: hourly air temperature as a colour-coded
+// pill, reusing the same TEMP_SCALE weather-map ramp (deep violet = cold
+// through gold/orange to magenta = extreme heat) already used for the
+// daily Weather row's max/min pills, just sampled through the day at the
+// same 2h/4h interval as the Wind/Current/Rain timeline rows above. No
+// icon/arrow (temperature has no direction) - just the coloured value
+// itself, plus a matching background-strip gradient like the other
+// timeline rows.
+function tempTimelineHtml(d, intervalHours, isPrint) {
+  if (!d.tempHourly || !d.tempHourly.length) return '<span class="muted">\u2014</span>';
+  const step = intervalHours || 2;
+  const hours = d.tempHourly.filter((h) => h.hour % step === 0);
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.temp != null ? tempColor(h.temp) : null, isPrint);
+  const cells = hours.map((h) => {
+    const hh = String(h.hour).padStart(2, "0");
+    const leftPct = (h.hour / 24) * 100;
+    const val = h.temp;
+    const color = val != null ? tempColor(val) : null;
+    const pillStyle = !isPrint && color ? `background-color:${color};color:${readableTextColor(color)}` : "";
+    return `<div class="wind-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
+      `<div class="wind-timeline-hour">${hh}</div>` +
+      `<div class="wind-timeline-speed temp-timeline-value" style="${pillStyle}">${val != null ? Math.round(val) + "\u00B0" : "\u2014"}</div>` +
+      `</div>`;
+  }).join("");
+  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
+}
+
 
 // make it immediately clear at a glance that this star rating is a
 // fishing-activity ("fishability") score rather than a generic moon-phase
@@ -2397,9 +2530,11 @@ const ROW_SHORT_ICONS = {
   weather: "\u{26C5}",
   pressure: "\u{1F321}\u{FE0F}\u{1F4CA}",
   rain: "\u{1F327}\u{FE0F}",
+  rainTimeline: "\u{1F327}\u{FE0F}",
   wind: windGustIconSvg(),
   windTimeline: windGustIconSvg(),
   currentTimeline: "\u{1F30A}\u{27A1}\u{FE0F}",
+  tempTimeline: "\u{1F321}\u{FE0F}",
   sun: "\u{2600}\u{FE0F}",
   moon: "\u{1F319}",
 };
@@ -2478,6 +2613,11 @@ const ROW_DEFS = [
     render: (d, scales, isPrint) => `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}${d.uvIndexMax != null ? ` ${uvBadgeHtml(d.uvIndexMax)}` : ""}`,
   },
   {
+    key: "tempTimeline", label: "Temperature", cellClass: "wind-timeline-cell-wrap", printDefault: false,
+    labelSub: { screen: "(2h)", print: "(4h)" },
+    render: (d, scales, isPrint) => tempTimelineHtml(d, isPrint ? 4 : 2, isPrint),
+  },
+  {
     key: "pressure", label: "Pressure", printDefault: false,
     render: (d) => d.pressure == null ? "\u2014" : `<span class="pressure-pill"${pressureStyle(d.pressure)}>${Math.round(d.pressure)} hPa</span>`,
   },
@@ -2487,6 +2627,11 @@ const ROW_DEFS = [
       const icon = precipIconSvg(weatherPrecipCategory(d.weatherCode));
       return `${icon ? `<span class="wx-icon-row">${icon}</span>` : ""}<span class="${rainChanceClass(d.rainChance)}">${d.rainMm != null ? d.rainMm.toFixed(1) : "0.0"}mm (${d.rainChance ?? 0}%)</span>`;
     },
+  },
+  {
+    key: "rainTimeline", label: "Rain", cellClass: "wind-timeline-cell-wrap", printDefault: false,
+    labelSub: { screen: "(2h)", print: "(4h)" },
+    render: (d, scales, isPrint) => rainTimelineHtml(d, isPrint ? 4 : 2, isPrint, scales?.rainTimelineScale),
   },
   {
     key: "sun", label: "Sun",
@@ -2715,7 +2860,7 @@ function render(days, settings, tideMeta) {
   const prevScrollLeft = prevScroll ? prevScroll.scrollLeft : 0;
   const prevScrollTop = prevScroll ? prevScroll.scrollTop : 0;
   root.innerHTML = "";
-  const scales = { curveScale: tideMeta.curveScale, waveScale: tideMeta.waveScale, waveTimelineScale: tideMeta.waveTimelineScale, windWaveTimelineScale: tideMeta.windWaveTimelineScale };
+  const scales = { curveScale: tideMeta.curveScale, waveScale: tideMeta.waveScale, waveTimelineScale: tideMeta.waveTimelineScale, windWaveTimelineScale: tideMeta.windWaveTimelineScale, rainTimelineScale: tideMeta.rainTimelineScale };
   // --- interactive (screen) table ---
   const screenWrap = document.createElement("div");
   screenWrap.className = "table-scroll no-print";
@@ -3137,8 +3282,8 @@ async function refresh() {
   saveSettings(settings);
   setStatus("Loading\u2026");
   try {
-    const { days, tideSource, tideNotes, tideStationInfo, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, dataFromCache, oldestFetchedAt } = await buildPlan(settings);
-    render(days, settings, { source: tideSource, notes: tideNotes, tideStationInfo, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, dataFromCache, oldestFetchedAt });
+    const { days, tideSource, tideNotes, tideStationInfo, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, rainTimelineScale, dataFromCache, oldestFetchedAt } = await buildPlan(settings);
+    render(days, settings, { source: tideSource, notes: tideNotes, tideStationInfo, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, rainTimelineScale, dataFromCache, oldestFetchedAt });
   } catch (err) {
     console.error(err);
     setStatus("Error loading data: " + err.message, true);

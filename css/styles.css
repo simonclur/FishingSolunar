@@ -586,6 +586,9 @@ table.planner-table {
 .current-timeline-speed {
   font-size: 0.52rem; padding: 0.05em 0.25em; border-radius: 0.2em; margin-top: 0.05rem;
 }
+.temp-timeline-value {
+  font-size: 0.58rem; padding: 0.05em 0.3em; border-radius: 0.3em; margin-top: 0.1rem;
+}
 .wind-barb-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; }
 .wind-barb-mini { fill: var(--ink); stroke: none; }
 .wind-barb-mini-outline { stroke: #fff; stroke-width: 0.8; paint-order: stroke fill; }
@@ -715,6 +718,7 @@ table.planner-table {
   .print-table .wind-speed-pill,
   .print-table .wind-timeline-speed,
   .print-table .wave-timeline-value,
+  .print-table .temp-timeline-value,
   .print-table .temp-pill,
   .print-table .wave-energy-pill,
   .print-table .wind-stat-val,
