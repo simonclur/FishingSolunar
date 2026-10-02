@@ -977,7 +977,7 @@ async function fetchWeather(lat, lon, startIso, endIso, tz) {
   const build = (s, e) => `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&daily=temperature_2m_max,temperature_2m_min,windspeed_10m_max,windspeed_10m_mean,windgusts_10m_max,winddirection_10m_dominant,` +
     `sunrise,sunset,precipitation_sum,precipitation_probability_max,weathercode,uv_index_max` +
-    `&hourly=windspeed_10m,winddirection_10m,pressure_msl,temperature_2m,precipitation` +
+    `&hourly=windspeed_10m,winddirection_10m,pressure_msl,temperature_2m,precipitation,relative_humidity_2m` +
     `&start_date=${s}&end_date=${e}&timezone=${encodeURIComponent(tz)}`;
   let res = await fetch(build(startIso, endIso));
   if (!res.ok) {
@@ -1057,6 +1057,24 @@ function hourlyTempForDay(weatherHourly, isoDay, intervalHours) {
     const hour = parseInt(times[i].slice(11, 13), 10);
     if (hour % step !== 0) continue;
     out.push({ hour, temp: temps ? temps[i] : null });
+  }
+  return out;
+}
+
+// Same idea again, for hourly relative humidity
+// (`&hourly=...,relative_humidity_2m`) - feeds the "Humidity" timeline row,
+// sampled at the same 2h/4h interval as the other timeline rows.
+function hourlyHumidityForDay(weatherHourly, isoDay, intervalHours) {
+  const step = intervalHours || 2;
+  if (!weatherHourly || !weatherHourly.time) return [];
+  const times = weatherHourly.time;
+  const humidity = weatherHourly.relative_humidity_2m;
+  const out = [];
+  for (let i = 0; i < times.length; i++) {
+    if (!times[i].startsWith(isoDay)) continue;
+    const hour = parseInt(times[i].slice(11, 13), 10);
+    if (hour % step !== 0) continue;
+    out.push({ hour, humidity: humidity ? humidity[i] : null });
   }
   return out;
 }
@@ -1604,6 +1622,7 @@ async function buildPlan(settings) {
       windHourly: hourlyWindForDay(weather.hourly, iso),
       rainHourly: hourlyRainForDay(weather.hourly, iso),
       tempHourly: hourlyTempForDay(weather.hourly, iso),
+      humidityHourly: hourlyHumidityForDay(weather.hourly, iso),
       sunHourly: hourlySunForDay(iso, lat, lon, tz),
       currentHourly: hourlyCurrentForDay(marine.hourly, iso),
       sunrise,
@@ -1930,6 +1949,30 @@ function tempStyle(tempC, isPrint) {
   const color = tempColor(tempC);
   if (!color || isPrint) return "";
   return ` style="background-color:${color};color:${readableTextColor(color)}"`;
+}
+
+// Relative-humidity colour scale for the "Humidity" timeline row - a
+// simple one-directional ramp (pale gold = dry, through green, to
+// progressively deeper blue = increasingly humid) rather than the
+// red/blue "hot/cold" convention used for air temperature above, since
+// humidity has no hot/cold-style midpoint - just "drier" to "wetter".
+const HUMIDITY_SCALE = [
+  { max: 30, color: "#E8C26A" },  // below 30%: dry - muted gold
+  { max: 40, color: "#C7D98C" },  // 30-40%: low - pale yellow-green
+  { max: 50, color: "#9FD0A0" },  // 40-50%: moderate - soft green
+  { max: 60, color: "#7FC8C4" },  // 50-60%: comfortable-humid - teal
+  { max: 70, color: "#5FB8E0" },  // 60-70%: humid - light blue
+  { max: 80, color: "#3DA0DB" },  // 70-80%: very humid - blue
+  { max: 90, color: "#2B7FC7" },  // 80-90%: muggy - deeper blue
+  { max: Infinity, color: "#1A5FA8" }, // above 90%: saturated - deep blue
+];
+
+function humidityColor(pct) {
+  if (pct == null) return null;
+  for (const stage of HUMIDITY_SCALE) {
+    if (pct < stage.max || stage.max === Infinity) return stage.color;
+  }
+  return HUMIDITY_SCALE[HUMIDITY_SCALE.length - 1].color;
 }
 
 // Sea-surface-temperature colour scale - deliberately a *different*, much
@@ -3305,6 +3348,32 @@ function tempTimelineHtml(d, intervalHours, isPrint, nextDay) {
   return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
 }
 
+// Relative-humidity timeline row - same layout/pattern as the Temperature
+// timeline row above (coloured pill + matching background-strip gradient
+// per 2h/4h increment), using HUMIDITY_SCALE/humidityColor() instead of
+// the temperature ramp. No sun-position icon underneath (that's specific
+// to temperature's "tracks how high the sun is" association).
+function humidityTimelineHtml(d, intervalHours, isPrint, nextDay) {
+  if (!d.humidityHourly || !d.humidityHourly.length) return missingDataCell(isPrint, d.weatherMissingReason);
+  const step = intervalHours || 2;
+  const hours = d.humidityHourly.filter((h) => h.hour % step === 0);
+  const nextFirstHour = nextDay?.humidityHourly?.find((h) => h.hour === 0);
+  const nextEdgeColor = nextFirstHour && nextFirstHour.humidity != null ? humidityColor(nextFirstHour.humidity) : null;
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.humidity != null ? humidityColor(h.humidity) : null, isPrint, nextEdgeColor);
+  const cells = hours.map((h) => {
+    const hh = String(h.hour).padStart(2, "0");
+    const leftPct = (h.hour / 24) * 100;
+    const val = h.humidity;
+    const color = val != null ? humidityColor(val) : null;
+    const pillStyle = !isPrint && color ? `background-color:${color};color:${readableTextColor(color)}` : "";
+    return `<div class="wind-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
+      `<div class="wind-timeline-hour">${hh}</div>` +
+      `<div class="wind-timeline-speed temp-timeline-value" style="${pillStyle}">${val != null ? Math.round(val) + "%" : "\u2014"}</div>` +
+      `</div>`;
+  }).join("");
+  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
+}
+
 
 // make it immediately clear at a glance that this star rating is a
 // fishing-activity ("fishability") score rather than a generic moon-phase
@@ -3382,6 +3451,7 @@ const ROW_SHORT_ICONS = {
   windTimeline: windGustIconSvg(),
   currentTimeline: "\u{1F30A}\u{27A1}\u{FE0F}",
   tempTimeline: "\u{1F321}\u{FE0F}",
+  humidityTimeline: "\u{1F4A7}", // water droplet
   sun: "\u{2600}\u{FE0F}",
   moon: "\u{1F319}",
 };
@@ -3475,6 +3545,11 @@ const ROW_DEFS = [
     key: "tempTimeline", label: "Temperature", cellClass: "wind-timeline-cell-wrap", printDefault: false,
     labelSub: { screen: "(2h)", print: "(4h)" },
     render: (d, scales, isPrint, nextDay) => tempTimelineHtml(d, isPrint ? 4 : 2, isPrint, nextDay),
+  },
+  {
+    key: "humidityTimeline", label: "Humidity", cellClass: "wind-timeline-cell-wrap", printDefault: false,
+    labelSub: { screen: "(2h)", print: "(4h)" },
+    render: (d, scales, isPrint, nextDay) => humidityTimelineHtml(d, isPrint ? 4 : 2, isPrint, nextDay),
   },
   {
     key: "pressure", label: "Pressure", printDefault: false,

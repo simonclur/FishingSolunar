@@ -14,7 +14,8 @@ every API used must support CORS for browser `fetch()` calls.
 - Also fetched hourly: `windspeed_10m`, `winddirection_10m` (used for the
   Wind (2h)/(4h) timeline row), `pressure_msl` (used for the screen-only
   Pressure row, averaged 6am–6pm per day like sea temp/current below),
-  `temperature_2m` (used for the Temperature (2h)/(4h) timeline row) and
+  `temperature_2m` (used for the Temperature (2h)/(4h) timeline row),
+  `relative_humidity_2m` (used for the Humidity (2h)/(4h) timeline row) and
   `precipitation` (used for the Rain (2h)/(4h) timeline row).
 - Covers a rolling window of roughly the last ~3 months up to ~16 days
   ahead of "today" (Open-Meteo enforces this server-side and rejects
