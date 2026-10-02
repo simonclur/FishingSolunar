@@ -64,8 +64,9 @@ every API used must support CORS for browser `fetch()` calls.
   direction (to avoid wrap-around error near 0°/360°), shown as a small arrow
   and label under the Waves/Swell row, using the same "direction of travel"
   convention as the swell arrow (API direction + 180°).
-- Same rolling-window limitation as the Forecast API above (roughly 3
-  months back to ~16 days ahead of today).
+- Accepts the same ~3-months-back-to-~16-days-ahead *query* range as the
+  Forecast API above, but the underlying wave/swell model's actual forecast
+  horizon is shorter in practice — see "Known limitations" below.
 
 ### Graceful degradation outside the Open-Meteo window
 
@@ -85,9 +86,9 @@ supported range no longer breaks the whole page:
   tide curve, moon phase and solunar rating (none of which depend on
   Open-Meteo) still render normally.
 
-Either way, the on-page warning banner explains which/how many days are
-affected and why — this is a normal API range limit, not something an API
-key can fix.
+Either way, each affected cell shows a small tap/click-able warning icon
+(instead of a blank "—") explaining why that day has no data and whether
+it's a normal API range limit — not something an API key can fix.
 
 
 ## 3. Tides (high/low times & heights) — local government data first, WorldTides as fallback
@@ -133,6 +134,16 @@ tides, per project requirements. It works in two tiers:
      `data/tides/<tideStationId>-<year>.csv`, add a matching entry (with
      `region`) to `js/locations.js` — no other code changes required (see
      `docs/SETUP.md`).
+   - **Annual refresh reminders**: `updateBundledTideDataStatus()` in
+     `js/app.js` drives two nagging reminders off `BUNDLED_TIDE_DATA_YEAR`
+     (bump this once the new year's CSVs are added) - a soft countdown
+     hint under ⚙ Settings starting ~1 November (when MSQ usually
+     publishes next year's tables), and a louder top-of-page banner
+     (`#tideDataStaleBanner`) starting 1 December that stays visible
+     (however overdue) until the constant/CSVs are updated. Nothing
+     actually breaks in the meantime - bundled stations automatically fall
+     back to the WorldTides API (see below) for any year not covered
+     locally.
 2. **WorldTides API (fallback, and the primary tide source for Tasmania, NSW
    & Victoria presets)** — used for any days/locations not covered by a local
    file (e.g. a custom lat/lon with no bundled station, a future year not yet
@@ -270,7 +281,7 @@ and that's clearly flagged rather than silently shown as current.
 - Tide data: local files only exist for stations bundled in `data/tides/`
   (currently Waddy Point 2026). Other locations, or years beyond what's
   bundled, need a WorldTides API key entered as a fallback; if neither is
-  available, tide cells show "—" and a warning banner is shown.
+  available, tide cells show a tap/click-able warning icon explaining why.
 - **Waves/swell/sea temperature only forecast ~9-10 days ahead** in testing
   (verified 11 Sep → 24 Sep window: real values through ~19 Sep, `null`
   after that) — this is a genuine data-availability limit of Open-Meteo's

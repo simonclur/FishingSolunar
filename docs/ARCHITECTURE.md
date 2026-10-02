@@ -85,11 +85,14 @@ exactly.
      whole page. Tide highs/lows, the tide curve, moon phase and solunar
      rating are computed independently of Open-Meteo (local CSV / WorldTides
      + local astronomical calculation) and are unaffected either way.
-     `buildPlan()` returns a `weatherNotes` array describing which
-     Open-Meteo call(s) failed and why; `render()` shows this alongside the
-     existing tide-source warning in the `#dataWarning` banner, explicitly
-     noting this is a date-range limitation and not something a WorldTides
-     API key can fix (that key only ever affects tide highs/lows).
+     `buildPlan()` records a per-day `weatherMissingReason`/
+     `marineMissingReason` (and `tidesMissingReason`) explaining which
+     Open-Meteo call failed/was out of range and why; `ROW_DEFS`'
+     `missingDataCell()` renders this as a small tap/click-able warning icon
+     in the affected cell itself (see step 3 below) rather than a single
+     top-of-page banner, explicitly noting this is a date-range/model
+     limitation and not something a WorldTides API key can fix (that key
+     only ever affects tide highs/lows).
 3. `render(days, settings)` builds:
    - one **interactive** `<table>` (all 14 days, screen-only, scrollable)
    - two **print-only** `<table>`s (days 1–7 and 8–14) inside `.print-page`
@@ -544,6 +547,19 @@ boat-launch safety/comfort read even on the laminated sheet:
   originally-screen-only rows enabled) - an accepted, expected trade-off
   (the 2-page guarantee only applies to the *default* toggle state), not a
   bug.
+- **Every row is also individually toggle-able for screen** (a later
+  follow-up, mirroring the print-toggle system above exactly, but fully
+  independent of it - someone might hide Pressure/Current on screen to cut
+  down scrolling while still printing them, or the reverse): a parallel
+  `defaultScreenRowToggles()`/`loadScreenRowToggles()`/
+  `saveScreenRowToggles()` trio (every row defaults to shown, matching the
+  pre-existing screen behaviour), persisted under
+  `fishingSolunar.screenRows`. `buildTable()`'s skip logic gained a second
+  line right under the print one:
+  `if (!isPrint && !screenRowToggles?.[row.key]) continue;`. The settings
+  panel gained a second dynamically-built checkbox list
+  (`#screenRowCheckboxes`, `screenRow-${row.key}` ids) right above the
+  existing print one, built and wired up the same way in `init()`.
 - **Fixed 2h-row print values overflowing their row height** - a follow-up
   bugfix found alongside the above: the printed Current/Wind-chop/Wind (4h)
   timeline rows' value text was rendering slightly below the row's own
@@ -984,6 +1000,24 @@ flags when currently-displayed weather/wave data is a >6h-old cached
 fallback, clearing automatically on the next successful live refresh
 (including via a browser `online` event listener).
 
+## Auto-refresh for long-lived tabs (kiosk displays)
+
+Nothing else in `init()` re-runs `refresh()` on a timer - it only fires on
+load, location/setting changes, and `online` events - so a tab left open
+for multiple days (e.g. a kiosk display) would otherwise keep showing
+whatever day it was first opened on, with increasingly stale data, for as
+long as it stays open and connected. Two timers set up in `init()` cover
+this:
+- `scheduleMidnightRefresh()` fires once just after each local midnight
+  (re-scheduling itself fresh each time, rather than a plain 24h
+  `setInterval`, so it can't drift off local midnight across a DST change
+  or a throttled/backgrounded tab) so the date window always rolls
+  forward onto today.
+- A plain `setInterval(() => refresh(), STALE_AFTER_MS)` (same 6h
+  threshold the stale-data badge uses) keeps the weather/marine data
+  itself from visibly going stale during the day, not just once at
+  midnight.
+
 Because the service worker is cache-first for the app shell, a normal
 browser reload can keep serving old HTML/CSS/JS (and `cachedFetch()` can
 still surface an old API response if a live fetch happens to fail at that
@@ -1031,9 +1065,9 @@ give useful results:
   date but nulls the fields, rather than omitting the date - confirmed via
   a direct API call for an inland QLD point). `buildPlan()` detects this
   (`marine.daily.wave_height_max[idx] == null`, not just a missing date)
-  and adds a "Waves/swell/sea temp/current unavailable..." note to
-  `weatherNotes` (shown in `#dataWarning`). `ROW_DEFS` entries for the
-  affected rows (`waves`, `waveTimeline`, `swellTimeline`,
+  and sets that day's `marineMissingReason` (surfaced as a tap/click-able
+  warning icon via `missingDataCell()` in the affected cell). `ROW_DEFS`
+  entries for the affected rows (`waves`, `waveTimeline`, `swellTimeline`,
   `windWaveTimeline`, `waveEnergy`, `seaTemp`, `currentTimeline`) each
   declare a `hasData(d)` predicate checking for an actual non-null value
   (not just a non-empty hourly array - `hourlyCurrentForDay()` still
@@ -1146,4 +1180,101 @@ in `buildPlan()`.
   convert the location's local wall-clock hour into a true UTC instant —
   no such conversion was needed anywhere else in the codebase since
   Open-Meteo's hourly responses already come back as local-time strings.
+
+**Temperature colour-scale rebalance + new Sea-temp colour scale (2026-10)**:
+reviewed both rows' colouring against standard weather-reporting colour
+conventions, prompted by `TEMP_SCALE` (air temp, used by both the daily
+Weather row's max/min pills and the Temperature (2h)/(4h) timeline) being
+too coarse for this app's actual locations — it had only 8 bands spanning
+-10C to 40C+, with single bands covering all of 10-20C (green) and all of
+20-30C (gold). Since this app's Australian sub-tropical locations mostly
+see daily temps in the 15-35C range, most real-world values were
+collapsing into just two colours, defeating the point of a colour scale.
+Rebalanced `TEMP_SCALE` to ~3-5C steps through that common range (10/15/
+20/25/28/32/36/40C breakpoints) while keeping the wide/coarse bands only
+at the genuinely rare extremes (below -10C, above 40C) — same violet→
+blue→cyan→green→gold→orange→red→magenta hue progression as before (the
+standard "cold blue → hot red" meteorological map convention, e.g.
+BOM/weather.com temperature outlook maps), just finer-grained in the
+middle. Also simplified `tempStyle()` (the Weather-row max/min pill
+helper) to use the same `readableTextColor()` luminance-based contrast
+picker the timeline row already used, removing the old `TEMP_WHITE_TEXT_
+MAX_INDEX`/`tempStageIndex()` fixed-index approach that had to be
+hand-maintained in sync with the breakpoints.
+
+The **Sea temp** row previously had no colour coding at all (plain text).
+Rather than reuse `TEMP_SCALE`, added a separate, deliberately much
+narrower `SEA_TEMP_SCALE` (`seaTempColor()`/`seaTempStyle()`, same
+pattern as `CURRENT_SPEED_SCALE`/`PRESSURE_SCALE`) spanning roughly
+15-31C instead of -10-40C+, since coastal sea temperatures vary far less
+than air temperatures and anglers care about finer distinctions within
+that narrow band — many sportfish have a preferred "sweet spot" loosely
+around 22-27C, cooler water below that tends to slow fish activity, and
+the high-20s/30C+ end starts approaching marine-heatwave/coral-bleaching
+territory for reef species. The Sea temp cell's value is now wrapped in
+the same `.temp-pill` markup/CSS the air-temperature pills already use
+(reusing the existing print strip-colours rule), coloured via
+`seaTempStyle()`.
+
+**Orientation-compass header widget (2026-10)**: a standalone, purely
+informational helper (`#northCompassToggle`/`#northCompassPanel` in
+`index.html`, `northCompassSvg()`/`renderNorthCompassWidget()`/
+`northOffsetDeg` in `js/app.js`) added after a user asked for a way to
+reconcile the app's wind/swell/current direction icons (which all assume
+true North = 0deg = "up", matching the underlying weather data) with a
+screen that's physically mounted sideways or at an angle (e.g. a kiosk
+tablet). Deliberately does **not** touch or rotate any existing
+compass/direction element (`windIconSvg()`, `miniWindBarbSvg()`, the
+swell/current travel arrows, the sun-position azimuth tick) - those all
+keep reading as true compass bearings exactly as before. Instead it's a
+small separate compass-rose SVG with a fixed "TOP" tick (always straight
+up, representing the physical top edge of the screen) and a red "N"
+needle rotated by a user-set/calibrated `northOffsetDeg` (persisted to
+`localStorage` under `fishingSolunar.northOffsetDeg`), so the user can see
+at a glance "North is actually over there" and manually work out real
+wind/swell directions relative to how their screen is mounted. Two ways
+to set it: a plain 0-359 number input, or a best-effort "Use device
+compass" button (iOS Safari's `webkitCompassHeading`, or `alpha` on
+devices/browsers that support the W3C `absolute` orientation flag -
+support and accuracy varies a lot across browsers/devices, so this is
+offered as a convenience starting point, not a guaranteed-accurate
+auto-detect; the manual number is always the reliable fallback). The same
+controls are duplicated inside the Settings panel (an "Orientation
+compass" field block) so the setting is discoverable there too, not just
+behind the header icon - both copies drive the same `northOffsetDeg`
+value and are kept in sync by `renderNorthCompassWidget()`;
+`wireNorthCompassControls()`/`calibrateNorthCompassFromDevice()` wire up
+each copy's input/calibrate/reset controls identically rather than
+duplicating that logic. The header button's own icon is also a tiny live
+instance of the same compass SVG (`northCompassSvg(..., { compact: true
+})`), so the configured orientation is visible at a glance without
+opening either panel.
+
+**Follow-up (2026-10)**: two gaps found once this was actually used:
+1. The outside-click-closes-the-panel handler compared `e.target !==
+   northCompassToggle`, but clicking the header button's own live SVG
+   icon makes `e.target` one of the SVG's child elements (not the button
+   itself), so the panel opened and was immediately re-closed by the same
+   click. Fixed to `!northCompassToggle.contains(e.target)`.
+2. The big compass dial itself had no click/drag handling at all - only
+   the number input could change the value, which wasn't obviously
+   "clickable" the way a compass dial implies. Added
+   `wireNorthCompassDial()` (Pointer Events, so mouse/touch/pen all work
+   through one code path): pointerdown/pointermove compute the clockwise-
+   from-top angle of the pointer relative to the dial's centre and set
+   `northOffsetDeg` directly, same convention as `northCompassSvg()`'s own
+   `(offsetDeg - 90)` angle math.
+3. "Use device compass" was originally a single one-shot reading (listen
+   for one orientation event, then detach). Changed to continuous live
+   tracking (`toggleNorthCompassLiveTracking()`/
+   `onDeviceOrientationForCompass()`): tapping the button leaves the
+   listener attached and keeps updating `northOffsetDeg` (throttled to
+   once per `NORTH_LIVE_TRACKING_THROTTLE_MS` = 200ms to avoid thrashing
+   `localStorage`/re-renders on every sensor tick) as the device is
+   rotated into its final mounted position, until the user taps "Stop
+   live compass" - a single stray reading taken at the wrong instant was
+   otherwise too easy to end up calibrated against. Dragging the dial by
+   hand automatically stops any in-progress live tracking, since manual
+   override should always win.
+
 

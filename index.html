@@ -17,9 +17,34 @@
   <div class="header-actions">
     <span id="lastUpdatedLabel" class="last-updated" hidden></span>
     <button id="forceRefreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh (clears cached data and reloads)">&#8635;</button>
+    <button id="northCompassToggle" class="icon-btn north-compass-toggle" aria-label="Orientation compass" title="Orientation compass (set where North actually is relative to this screen)"></button>
     <button id="settingsToggle" class="icon-btn" aria-label="Settings" title="Settings">&#9881;</button>
   </div>
 </header>
+
+<section id="northCompassPanel" class="north-compass-panel no-print" hidden>
+  <p class="hint">
+    This doesn't change any weather/wind/swell direction data &mdash; those
+    always use true North = 0&deg; as normal. It's just a personal
+    reference so you can work out, for example, which way the wind is
+    really coming from while looking at a screen that's mounted sideways
+    or at an angle.
+  </p>
+  <div class="north-compass-body">
+    <div id="northCompassSvgWrap" class="north-compass-svg-wrap"></div>
+    <div class="north-compass-controls">
+      <label for="northOffsetInput">North is this many degrees clockwise from the top of this screen <span class="hint">(drag the dial, type a number, or use your device's compass)</span></label>
+      <div class="field-row actions">
+        <input id="northOffsetInput" type="number" min="0" max="359" step="1" />
+        <button type="button" id="calibrateCompassBtn" class="secondary-btn">&#128225; Use device compass</button>
+        <button type="button" id="resetCompassBtn" class="secondary-btn">Reset (N = top)</button>
+      </div>
+      <span id="compassCalibrateStatus" class="hint" role="status"></span>
+    </div>
+  </div>
+</section>
+
+<div id="tideDataStaleBanner" class="stale-tide-banner no-print" hidden></div>
 
 <section id="settingsPanel" class="settings-panel no-print" hidden>
   <form id="settingsForm">
@@ -75,9 +100,37 @@
     <p id="tideSourceNote" class="hint tide-source-note"></p>
     <p id="bundledTideDataStatus" class="hint bundled-tide-data-status"></p>
     <div class="field">
+      <label class="field-group-label">Show on screen</label>
+      <span class="hint">Choose which rows appear in the interactive table below &mdash; hide ones you don't need to cut down scrolling. Independent of what gets printed (see below).</span>
+      <div class="field-checkboxes" id="screenRowCheckboxes"></div>
+    </div>
+    <div class="field">
       <label class="field-group-label">Include in print layout</label>
-      <span class="hint">All rows always show on screen; choose which also print on the laminated sheet.</span>
+      <span class="hint">Choose which rows also print on the laminated sheet &mdash; independent of what's shown on screen above.</span>
       <div class="field-checkboxes" id="printRowCheckboxes"></div>
+    </div>
+    <div class="field">
+      <label class="field-group-label">Orientation compass</label>
+      <span class="hint">
+        Doesn't change any weather/wind/swell direction data &mdash; those
+        always use true North = 0&deg; as normal. It's just a personal
+        reference so you can work out, for example, which way the wind is
+        really coming from while looking at a screen that's mounted
+        sideways or at an angle. Same setting as the &#129517; icon in the
+        header.
+      </span>
+      <div class="north-compass-body">
+        <div id="northCompassSvgWrapSettings" class="north-compass-svg-wrap"></div>
+        <div class="north-compass-controls">
+          <label for="northOffsetInputSettings">North is this many degrees clockwise from the top of this screen <span class="hint">(drag the dial, type a number, or use your device's compass)</span></label>
+          <div class="field-row actions">
+            <input id="northOffsetInputSettings" type="number" min="0" max="359" step="1" />
+            <button type="button" id="calibrateCompassBtnSettings" class="secondary-btn">&#128225; Use device compass</button>
+            <button type="button" id="resetCompassBtnSettings" class="secondary-btn">Reset (N = top)</button>
+          </div>
+          <span id="compassCalibrateStatusSettings" class="hint" role="status"></span>
+        </div>
+      </div>
     </div>
     <div class="field">
       <label for="worldTidesKey">WorldTides API key <span class="hint">(optional &mdash; not needed for Waddy Point or any location with a bundled local tide file; only used as a fallback for other locations/years. Free signup at worldtides.info)</span></label>
@@ -95,8 +148,6 @@
     <p id="statusMsg" class="status-msg" role="status"></p>
   </form>
 </section>
-
-<div id="dataWarning" class="data-warning no-print" hidden></div>
 
 <div id="staleBadge" class="stale-badge no-print" hidden></div>
 

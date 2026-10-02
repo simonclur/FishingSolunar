@@ -20,6 +20,8 @@ const LS_KEYS = {
   refHeight: "fishingSolunar.refTideHeight",
   rowLabelsCollapsed: "fishingSolunar.rowLabelsCollapsed",
   printRows: "fishingSolunar.printRows",
+  screenRows: "fishingSolunar.screenRows",
+  northOffset: "fishingSolunar.northOffsetDeg",
 };
 
 // Which rows the user wants included on the printed/laminated sheet -
@@ -50,6 +52,30 @@ function savePrintRowToggles(toggles) {
   localStorage.setItem(LS_KEYS.printRows, JSON.stringify(toggles));
 }
 
+// Which rows the user wants shown in the interactive on-screen table -
+// mirrors the print-row toggle system above but is a fully independent
+// preference (e.g. someone might want Pressure visible on screen while
+// planning, but never bother printing it, or the reverse). Every row
+// defaults to shown (`true`) since that's the behaviour before this
+// toggle system existed - nothing is hidden from screen out of the box.
+function defaultScreenRowToggles() {
+  const defaults = {};
+  for (const row of ROW_DEFS) defaults[row.key] = true;
+  return defaults;
+}
+function loadScreenRowToggles() {
+  const defaults = defaultScreenRowToggles();
+  try {
+    const raw = localStorage.getItem(LS_KEYS.screenRows);
+    return raw ? { ...defaults, ...JSON.parse(raw) } : defaults;
+  } catch {
+    return defaults;
+  }
+}
+function saveScreenRowToggles(toggles) {
+  localStorage.setItem(LS_KEYS.screenRows, JSON.stringify(toggles));
+}
+
 // Trip-planning "reference height" for the tide curve row: the user types
 // in a critical water depth (e.g. the depth needed to safely cross a
 // sandbar/channel) into an input in the "Tide curve" row label, and every
@@ -69,6 +95,240 @@ let refTideHeight = (() => {
 // the underlying `days` data doesn't change, only the overlay drawn on top
 // of it) rather than re-running the whole `refresh()` fetch pipeline.
 let lastRenderArgs = null;
+
+// Orientation-compass helper (see #northCompassPanel in index.html) - a
+// purely informational reference, completely separate from every other
+// compass/direction element in the app (wind barb, swell/current travel
+// arrows, sun azimuth tick), which all continue to treat true North as
+// 0deg/"up" exactly as before. This value is never read by any of that
+// rendering code - it only drives the small standalone compass widget in
+// the header panel, letting a user record "how many degrees clockwise
+// from the physical top of my screen does true North actually sit" for
+// their own mental reference (e.g. a kiosk tablet mounted at an angle).
+let northOffsetDeg = (() => {
+  const raw = localStorage.getItem(LS_KEYS.northOffset);
+  const n = raw === null ? NaN : parseFloat(raw);
+  return isNaN(n) ? 0 : ((n % 360) + 360) % 360;
+})();
+function saveNorthOffsetDeg(deg) {
+  northOffsetDeg = ((deg % 360) + 360) % 360;
+  localStorage.setItem(LS_KEYS.northOffset, String(northOffsetDeg));
+}
+
+// Renders the orientation-compass widget: a fixed ring + a tick/label at
+// the top representing the physical top edge of the screen (always
+// straight up, never rotates), and a red "N" needle rotated `offsetDeg`
+// clockwise from that to show where true North currently is relative to
+// the screen. Deliberately a standalone bit of SVG, not a reuse of
+// `windIconSvg()`'s compass rose, since the two widgets' ticks mean
+// different things (that one's N/E/S/W ticks are fixed/absolute with the
+// wind barb rotating; this one's "top of screen" tick is fixed/absolute
+// with the *North* label rotating).
+// `compact` (used for the tiny header button icon, vs the full-size panel
+// widget) drops the "TOP"/"N" text labels, which are illegible at ~22px,
+// keeping just the ring/tick/needle shapes so the icon itself visibly
+// "shows" the configured setting at a glance.
+function northCompassSvg(offsetDeg, { size = 90, compact = false } = {}) {
+  const cx = size / 2, cy = size / 2, ringR = size / 2 - (compact ? 3 : 7);
+  const rad = (offsetDeg - 90) * (Math.PI / 180); // -90 so 0deg points up
+  const needleTipX = cx + Math.cos(rad) * (ringR - (compact ? 1 : 6));
+  const needleTipY = cy + Math.sin(rad) * (ringR - (compact ? 1 : 6));
+  const perpRad = rad + Math.PI / 2;
+  const baseHalf = compact ? size * 0.055 : 5;
+  const baseX1 = cx + Math.cos(perpRad) * baseHalf;
+  const baseY1 = cy + Math.sin(perpRad) * baseHalf;
+  const baseX2 = cx - Math.cos(perpRad) * baseHalf;
+  const baseY2 = cy - Math.sin(perpRad) * baseHalf;
+  const tickLen = compact ? 3 : 8;
+  const topTick = `<line x1="${cx}" y1="${cy - ringR}" x2="${cx}" y2="${cy - ringR + tickLen}" class="north-compass-top-tick"></line>`;
+  const topLabel = compact ? "" : `<text x="${cx}" y="${cy - ringR + 18}" text-anchor="middle" class="north-compass-label">TOP</text>`;
+  let needleLabel = "";
+  if (!compact) {
+    const labelX = cx + Math.cos(rad) * (ringR - 16);
+    const labelY = cy + Math.sin(rad) * (ringR - 16);
+    needleLabel = `<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" dominant-baseline="central" class="north-compass-label">N</text>`;
+  }
+  return `<svg class="north-compass-svg${compact ? " north-compass-svg-compact" : ""}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="North is ${Math.round(offsetDeg)} degrees clockwise from the top of this screen">` +
+    `<circle cx="${cx}" cy="${cy}" r="${ringR}" class="north-compass-ring"></circle>` +
+    topTick +
+    topLabel +
+    `<polygon points="${needleTipX.toFixed(1)},${needleTipY.toFixed(1)} ${baseX1.toFixed(1)},${baseY1.toFixed(1)} ${cx},${cy} ${baseX2.toFixed(1)},${baseY2.toFixed(1)}" class="north-compass-needle"></polygon>` +
+    needleLabel +
+    `</svg>`;
+}
+
+// Keeps every on-screen reflection of `northOffsetDeg` in sync: the tiny
+// live compass icon inside the header toggle button itself (so the
+// configured orientation is visible at a glance without opening either
+// panel), and both the header-panel and Settings-panel copies of the
+// larger compass + number input (the two are the same underlying setting,
+// just exposed in two places for convenience - see docs/ARCHITECTURE.md).
+function renderNorthCompassWidget() {
+  const btn = $("northCompassToggle");
+  if (btn) btn.innerHTML = northCompassSvg(northOffsetDeg, { size: 22, compact: true });
+  for (const wrapId of ["northCompassSvgWrap", "northCompassSvgWrapSettings"]) {
+    const wrap = $(wrapId);
+    if (wrap) wrap.innerHTML = northCompassSvg(northOffsetDeg);
+  }
+  for (const inputId of ["northOffsetInput", "northOffsetInputSettings"]) {
+    const input = $(inputId);
+    if (input && document.activeElement !== input) input.value = Math.round(northOffsetDeg);
+  }
+}
+
+// Wires up one number-input/calibrate-button/reset-button/status-text set
+// for the orientation compass - called once for the header dropdown panel
+// and once more for the matching block inside the Settings panel, since
+// both expose the same underlying `northOffsetDeg` setting (see
+// docs/ARCHITECTURE.md).
+function wireNorthCompassControls(inputId, calibrateBtnId, resetBtnId, statusId) {
+  $(inputId).addEventListener("input", () => {
+    const n = parseFloat($(inputId).value);
+    if (!isNaN(n)) {
+      saveNorthOffsetDeg(n);
+      renderNorthCompassWidget();
+    }
+  });
+  $(resetBtnId).addEventListener("click", () => {
+    if (northLiveTracking) stopNorthCompassLiveTracking();
+    saveNorthOffsetDeg(0);
+    renderNorthCompassWidget();
+    setNorthCompassStatus("");
+  });
+  $(calibrateBtnId).addEventListener("click", toggleNorthCompassLiveTracking);
+}
+
+// Lets the user drag/tap directly on the compass dial itself to point the
+// needle at North, as an alternative to typing a number - registered on
+// both the header-panel and Settings-panel copies of the dial. Uses
+// Pointer Events (covers mouse, touch and pen with one code path).
+function wireNorthCompassDial(wrapId) {
+  const wrap = $(wrapId);
+  if (!wrap) return;
+  let dragging = false;
+  function angleFromEvent(e) {
+    const svg = wrap.querySelector("svg");
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    const dx = e.clientX - (rect.left + rect.width / 2);
+    const dy = e.clientY - (rect.top + rect.height / 2);
+    // atan2(dx, -dy) measures clockwise from "up" (screen -Y), matching
+    // northCompassSvg()'s own `(offsetDeg - 90)` convention.
+    return ((Math.atan2(dx, -dy) * (180 / Math.PI)) % 360 + 360) % 360;
+  }
+  function apply(e) {
+    const deg = angleFromEvent(e);
+    if (deg == null) return;
+    saveNorthOffsetDeg(deg);
+    renderNorthCompassWidget();
+  }
+  wrap.style.cursor = "grab";
+  wrap.style.touchAction = "none";
+  wrap.addEventListener("pointerdown", (e) => {
+    // Dragging the dial by hand is a manual override - stop any in-progress
+    // live device-compass tracking so it doesn't immediately fight back.
+    if (northLiveTracking) stopNorthCompassLiveTracking();
+    dragging = true;
+    wrap.setPointerCapture?.(e.pointerId);
+    wrap.style.cursor = "grabbing";
+    apply(e);
+  });
+  wrap.addEventListener("pointermove", (e) => {
+    if (dragging) apply(e);
+  });
+  const stop = () => {
+    dragging = false;
+    wrap.style.cursor = "grab";
+  };
+  wrap.addEventListener("pointerup", stop);
+  wrap.addEventListener("pointercancel", stop);
+}
+
+// Whether "Use device compass" is actively/continuously tracking the
+// device's live compass heading (started/stopped via
+// toggleNorthCompassLiveTracking() below) - shared across both the
+// header-panel and Settings-panel copies of the calibrate button, since
+// it's a single underlying listener, not two independent ones.
+let northLiveTracking = false;
+let northLiveTrackingLastWriteTs = 0;
+const NORTH_LIVE_TRACKING_THROTTLE_MS = 200; // avoid thrashing localStorage/re-render on every sensor tick
+
+function setNorthCompassButtonsLabel(active) {
+  for (const id of ["calibrateCompassBtn", "calibrateCompassBtnSettings"]) {
+    const btn = $(id);
+    if (btn) btn.textContent = active ? "\u{1F4E1} Stop live compass" : "\u{1F4E1} Use device compass";
+  }
+}
+function setNorthCompassStatus(text) {
+  for (const id of ["compassCalibrateStatus", "compassCalibrateStatusSettings"]) {
+    const el = $(id);
+    if (el) el.textContent = text;
+  }
+}
+
+// iOS Safari exposes `webkitCompassHeading` directly as the compass
+// bearing the top of the device currently points to (no `absolute` flag
+// needed). Elsewhere, fall back to `alpha` when the event is flagged
+// `absolute` (device-orientation spec convention: compass heading =
+// 360 - alpha, since alpha increases counter-clockwise while compass
+// bearing increases clockwise) - best-effort, since browser/device
+// support for true "absolute" orientation varies; the manual number
+// input/dial-drag above are always the reliable fallback.
+function onDeviceOrientationForCompass(e) {
+  let heading = null;
+  if (typeof e.webkitCompassHeading === "number") heading = e.webkitCompassHeading;
+  else if (e.absolute && e.alpha != null) heading = (360 - e.alpha) % 360;
+  if (heading == null) return;
+  const now = Date.now();
+  if (now - northLiveTrackingLastWriteTs < NORTH_LIVE_TRACKING_THROTTLE_MS) return;
+  northLiveTrackingLastWriteTs = now;
+  saveNorthOffsetDeg((360 - heading) % 360);
+  renderNorthCompassWidget();
+}
+
+// Starts (or stops, if already running) continuously following the
+// device's own compass sensor, so a held/handheld tablet keeps the
+// configured North reference up to date as it's rotated into its final
+// mounted position - rather than a single one-off reading, which could
+// easily be taken at a slightly wrong moment. The user taps "Stop live
+// compass" once it's settled into place.
+async function toggleNorthCompassLiveTracking() {
+  if (northLiveTracking) {
+    stopNorthCompassLiveTracking();
+    setNorthCompassStatus("Live tracking stopped - the number above is now fixed.");
+    return;
+  }
+  if (typeof DeviceOrientationEvent === "undefined") {
+    setNorthCompassStatus("Not supported on this device/browser - set the number manually, or drag the dial, instead.");
+    return;
+  }
+  // iOS 13+ requires an explicit user-gesture permission prompt before
+  // orientation/motion events fire at all; other browsers don't have (or
+  // need) this API, so only call it when present.
+  if (typeof DeviceOrientationEvent.requestPermission === "function") {
+    try {
+      const result = await DeviceOrientationEvent.requestPermission();
+      if (result !== "granted") {
+        setNorthCompassStatus("Permission denied - set the number manually, or drag the dial, instead.");
+        return;
+      }
+    } catch {
+      setNorthCompassStatus("Couldn't request compass permission - set the number manually, or drag the dial, instead.");
+      return;
+    }
+  }
+  northLiveTracking = true;
+  setNorthCompassButtonsLabel(true);
+  setNorthCompassStatus("Live-tracking the device's compass \u2014 move/rotate the screen into its final mounted position, then tap \u201cStop live compass\u201d.");
+  window.addEventListener("deviceorientationabsolute", onDeviceOrientationForCompass);
+  window.addEventListener("deviceorientation", onDeviceOrientationForCompass);
+}
+function stopNorthCompassLiveTracking() {
+  northLiveTracking = false;
+  setNorthCompassButtonsLabel(false);
+  window.removeEventListener("deviceorientationabsolute", onDeviceOrientationForCompass);
+  window.removeEventListener("deviceorientation", onDeviceOrientationForCompass);
+}
 
 // Set once by populatePresets() (see init()) so useGpsLocation() - a
 // separate top-level function - can trigger the same "Nearest to you"
@@ -495,24 +755,48 @@ const BUNDLED_TIDE_DATA_PUBLISH_DAY = 1;
 // year's dates roll around). Purely informational: nothing breaks when the
 // data goes stale, the app already falls back to the WorldTides API
 // automatically (see fetchTides()) for any year/day not covered locally.
+//
+// Separately, a louder top-of-page banner (`#tideDataStaleBanner`, see
+// render() of this function below) starts showing from 1 December - a
+// month after the "usually published" reminder above, giving MSQ a
+// quiet month to actually publish before surfacing it page-wide - and
+// keeps showing (through the whole of the following year, however overdue)
+// until a maintainer bumps `BUNDLED_TIDE_DATA_YEAR` and adds the new
+// `data/tides/*-<year>.csv` files, which pushes this same 1 December
+// threshold a full year forward.
+const TIDE_DATA_BANNER_MONTH = 11; // 0-indexed: 11 = December
+const TIDE_DATA_BANNER_DAY = 1;
+
 function updateBundledTideDataStatus() {
   const el = $("bundledTideDataStatus");
-  if (!el) return;
+  const bannerEl = $("tideDataStaleBanner");
+  if (!el && !bannerEl) return;
   const nextYear = BUNDLED_TIDE_DATA_YEAR + 1;
   const publishFrom = new Date(BUNDLED_TIDE_DATA_YEAR, BUNDLED_TIDE_DATA_PUBLISH_MONTH, BUNDLED_TIDE_DATA_PUBLISH_DAY);
+  const bannerFrom = new Date(BUNDLED_TIDE_DATA_YEAR, TIDE_DATA_BANNER_MONTH, TIDE_DATA_BANNER_DAY);
   const staleFrom = new Date(`${nextYear}-01-01T00:00:00`);
   const now = new Date();
   const msPerDay = 24 * 3600 * 1000;
   const daysUntilPublish = Math.ceil((publishFrom.getTime() - now.getTime()) / msPerDay);
   const daysUntilStale = Math.ceil((staleFrom.getTime() - now.getTime()) / msPerDay);
   const publishDateText = publishFrom.toLocaleDateString(undefined, { day: "numeric", month: "long" });
+
+  let bannerText = null;
   if (daysUntilPublish > 0) {
-    el.textContent = `Bundled Queensland tide data covers ${BUNDLED_TIDE_DATA_YEAR}. MSQ usually publishes ${nextYear}'s tide tables around ${publishDateText} (in ${daysUntilPublish} day${daysUntilPublish === 1 ? "" : "s"}) - check data.qld.gov.au then and add data/tides/*-${nextYear}.csv files - see docs/DATA_SOURCES.md.`;
+    if (el) el.textContent = `Bundled Queensland tide data covers ${BUNDLED_TIDE_DATA_YEAR}. MSQ usually publishes ${nextYear}'s tide tables around ${publishDateText} (in ${daysUntilPublish} day${daysUntilPublish === 1 ? "" : "s"}) - check data.qld.gov.au then and add data/tides/*-${nextYear}.csv files - see docs/DATA_SOURCES.md.`;
   } else if (daysUntilStale > 0) {
-    el.textContent = `Bundled Queensland tide data covers ${BUNDLED_TIDE_DATA_YEAR}. ${nextYear}'s tide tables should be published by now - check data.qld.gov.au and add data/tides/*-${nextYear}.csv files in the next ${daysUntilStale} day${daysUntilStale === 1 ? "" : "s"} (before 1 Jan ${nextYear}) - see docs/DATA_SOURCES.md.`;
+    if (el) el.textContent = `Bundled Queensland tide data covers ${BUNDLED_TIDE_DATA_YEAR}. ${nextYear}'s tide tables should be published by now - check data.qld.gov.au and add data/tides/*-${nextYear}.csv files in the next ${daysUntilStale} day${daysUntilStale === 1 ? "" : "s"} (before 1 Jan ${nextYear}) - see docs/DATA_SOURCES.md.`;
+    bannerText = `\u26A0 ${nextYear}'s Queensland tide data hasn't been bundled yet - MSQ's tables are usually published by now. Check data.qld.gov.au, add data/tides/*-${nextYear}.csv files and bump BUNDLED_TIDE_DATA_YEAR in js/app.js (see docs/DATA_SOURCES.md). Bundled stations are using the WorldTides API as a fallback in the meantime (a key is required for that in \u2699 Settings).`;
   } else {
     const daysOverdue = -daysUntilStale;
-    el.textContent = `Bundled Queensland tide data still only covers ${BUNDLED_TIDE_DATA_YEAR} and is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue for a ${nextYear} refresh - check data.qld.gov.au and add data/tides/*-${nextYear}.csv files - see docs/DATA_SOURCES.md. Bundled stations are automatically falling back to the WorldTides API in the meantime (a key is required for that in Settings).`;
+    if (el) el.textContent = `Bundled Queensland tide data still only covers ${BUNDLED_TIDE_DATA_YEAR} and is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue for a ${nextYear} refresh - check data.qld.gov.au and add data/tides/*-${nextYear}.csv files - see docs/DATA_SOURCES.md. Bundled stations are automatically falling back to the WorldTides API in the meantime (a key is required for that in Settings).`;
+    bannerText = `\u26A0 Bundled Queensland tide data is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue for its ${nextYear} refresh. Check data.qld.gov.au, add data/tides/*-${nextYear}.csv files and bump BUNDLED_TIDE_DATA_YEAR in js/app.js (see docs/DATA_SOURCES.md). Bundled stations are using the WorldTides API as a fallback in the meantime (a key is required for that in \u2699 Settings).`;
+  }
+
+  if (bannerEl) {
+    const showBanner = bannerText != null && now >= bannerFrom;
+    bannerEl.hidden = !showBanner;
+    if (showBanner) bannerEl.textContent = bannerText;
   }
 }
 
@@ -1097,6 +1381,19 @@ async function buildPlan(settings) {
     ? await window.TideCalc.getStationAnnualExtremes(tidePreset.tideStationId, startDate.getFullYear())
     : null;
 
+  // Per-day "why is this cell blank" reasons, surfaced via a small tap/
+  // click-able warning icon in each affected cell (see missingDataCell()
+  // below) instead of a single combined banner across the top of the page.
+  const tideMissingReason = tides.notes.length
+    ? `No tide prediction available (${tides.notes.join("; ")}). Add a WorldTides API key in \u2699 Settings as a fallback, or add a local tide file (see docs/DATA_SOURCES.md).`
+    : `No tide prediction available for this day. Add a WorldTides API key in \u2699 Settings as a fallback, or add a local tide file (see docs/DATA_SOURCES.md).`;
+  const weatherMissingReasonFor = (wIdx) => wIdx >= 0 ? null : (weatherResult.error
+    ? `Weather data request failed (${weatherResult.error.message}).`
+    : `Outside Open-Meteo's weather forecast range (roughly 3 months back to ~16 days ahead of today) \u2014 try an earlier start date.`);
+  const marineMissingReasonFor = (mIdx) => (mIdx >= 0 && marine.daily.wave_height_max[mIdx] != null) ? null : (marineResult.error
+    ? `Marine data request failed (${marineResult.error.message}).`
+    : `Open-Meteo's wave/swell forecast only extends ~9-10 days ahead (shorter than its ~16-day weather forecast), or there's no marine data at this location \u2014 this doesn't change with a different start date.`);
+
   const days = [];
   for (let i = 0; i < 14; i++) {
     const date = addDays(startDate, i);
@@ -1134,6 +1431,11 @@ async function buildPlan(settings) {
       tideAllEvents: tides.sortedEvents,
       tideCurve,
       tidesMissing: tides.missingDays.includes(iso),
+      tidesMissingReason: tides.missingDays.includes(iso) ? tideMissingReason : null,
+      weatherMissing: wIdx < 0,
+      weatherMissingReason: weatherMissingReasonFor(wIdx),
+      marineMissing: mIdx < 0 || marine.daily.wave_height_max[mIdx] == null,
+      marineMissingReason: marineMissingReasonFor(mIdx),
       waveHeight: mIdx >= 0 ? marine.daily.wave_height_max[mIdx] : null,
       swellHeight: mIdx >= 0 ? marine.daily.swell_wave_height_max[mIdx] : null,
       swellDir: mIdx >= 0 ? marine.daily.swell_wave_direction_dominant[mIdx] : null,
@@ -1232,41 +1534,11 @@ async function buildPlan(settings) {
   const anyFromCache = weatherResult.fromCache || marineResult.fromCache || tides.stale;
   const oldestFetchedAt = fetchedAts.length ? Math.min(...fetchedAts) : null;
 
-  const weatherNotes = [];
-  if (weatherResult.error) weatherNotes.push(`Weather/wind/sun unavailable for this date range (${weatherResult.error.message})`);
-  if (marineResult.error) weatherNotes.push(`Waves/swell/sea temp unavailable for this date range (${marineResult.error.message})`);
-
-  // Even on a "successful" request, a retry may have clipped the range to
-  // what Open-Meteo actually has available (see fetchWeather/fetchMarine),
-  // so some days at the start/end of the 14-day window may still have no
-  // weather/marine data even though no error was thrown. Surface that too.
-  if (!weatherResult.error) {
-    const missing = days.filter((d) => !weather.daily.time.includes(d.iso)).length;
-    if (missing) weatherNotes.push(`Weather/wind/sun unavailable for ${missing} of 14 day(s) (outside Open-Meteo's forecast range)`);
-  }
-  if (!marineResult.error) {
-    // A date can be present in marine.daily.time yet still carry a `null`
-    // wave_height_max - the Marine API returns land grid points with
-    // every value nulled out rather than omitting the date outright (see
-    // buildPlan()'s marineLat/marineLon comment - this is what a genuinely
-    // inland location looks like once no coastal tide station resolved
-    // within AUTO_TIDE_STATION_MAX_KM). Counting only missing *dates*
-    // would silently miss this and show no warning at all, even though the
-    // wave/swell/sea temp/current rows end up hidden entirely (see
-    // ROW_DEFS `hasData`/buildTable()).
-    const missing = days.filter((d) => {
-      const idx = marine.daily.time.indexOf(d.iso);
-      return idx === -1 || marine.daily.wave_height_max[idx] == null;
-    }).length;
-    if (missing) weatherNotes.push(`Waves/swell/sea temp/current unavailable for ${missing} of 14 day(s) (outside Open-Meteo's forecast range, or no marine data at this location)`);
-  }
-
   return {
     days,
     tideSource: tides.source,
     tideNotes: tides.notes,
     tideStationInfo: tidePreset ? { name: tidePreset.name, distanceKm: tideResolved.distanceKm, auto: tideResolved.auto } : null,
-    weatherNotes,
     curveScale,
     waveScale,
     waveTimelineScale,
@@ -1278,6 +1550,87 @@ async function buildPlan(settings) {
 }
 
 // ---------- rendering ----------
+
+// Per-render registry of "why is this cell blank" reason strings (see
+// missingDataCell() below), indexed by position so each `.data-missing-btn`
+// only needs a numeric `data-reason-id` attribute - avoids HTML-escaping
+// the (occasionally API-sourced, e.g. WorldTides error text) reason string
+// into a DOM attribute entirely, since the popover click handler reads the
+// text straight out of this array and sets it via `.textContent`. Reset at
+// the top of render() on every refresh so stale ids from a previous render
+// can't resolve to the wrong text.
+let missingReasonRegistry = [];
+let openMissingPopoverEl = null;
+let openMissingPopoverBtn = null;
+
+function closeMissingDataPopover() {
+  if (openMissingPopoverEl) {
+    openMissingPopoverEl.remove();
+    openMissingPopoverEl = null;
+    openMissingPopoverBtn = null;
+  }
+}
+
+// Renders a tap/click-able warning icon in place of a blank data cell,
+// replacing the old top-of-page #dataWarning banner text for per-day
+// tide/weather/marine gaps - tapping/clicking the icon pops up the same
+// explanation right next to the cell it affects, instead of a single
+// combined message taking up a permanent strip of screen above the table
+// (see wireMissingDataPopover()). Print always falls back to the plain
+// "warn" dash (no interactivity on paper); a day with no reason recorded
+// (shouldn't normally happen - every blank cell should have a reason) also
+// falls back to a plain muted dash rather than a dead-end icon.
+function missingDataCell(isPrint, reason) {
+  if (!reason) return '<span class="muted">\u2014</span>';
+  if (isPrint) return '<span class="warn">&mdash;</span>';
+  const id = missingReasonRegistry.push(reason) - 1;
+  return `<button type="button" class="data-missing-btn" data-reason-id="${id}" aria-label="No data for this cell \u2014 tap for why">\u26A0</button>`;
+}
+
+// Single delegated click/keyboard handler for every `.data-missing-btn`
+// across the whole (rebuilt-on-every-render) table, so it only needs
+// wiring once at app init rather than re-bound per render() call. Shows a
+// small floating popover with the reason text next to the tapped icon;
+// tapping the same icon again, tapping elsewhere, scrolling, or pressing
+// Escape all dismiss it.
+function wireMissingDataPopover() {
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".data-missing-btn");
+    if (btn) {
+      e.stopPropagation();
+      const reopening = openMissingPopoverBtn === btn;
+      closeMissingDataPopover();
+      if (reopening) return;
+      const reason = missingReasonRegistry[Number(btn.dataset.reasonId)];
+      if (!reason) return;
+      const pop = document.createElement("div");
+      pop.className = "data-missing-popover";
+      pop.setAttribute("role", "tooltip");
+      pop.textContent = reason;
+      document.body.appendChild(pop);
+      const rect = btn.getBoundingClientRect();
+      const popRect = pop.getBoundingClientRect();
+      let left = rect.left + rect.width / 2 - popRect.width / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - popRect.width - 8));
+      let top = rect.bottom + 6;
+      if (top + popRect.height > window.innerHeight - 8) top = rect.top - popRect.height - 6;
+      pop.style.left = `${left}px`;
+      pop.style.top = `${top}px`;
+      openMissingPopoverEl = pop;
+      openMissingPopoverBtn = btn;
+      return;
+    }
+    if (openMissingPopoverEl && !e.target.closest(".data-missing-popover")) closeMissingDataPopover();
+  });
+  // Scroll events don't bubble, but a capturing-phase listener on document
+  // still sees them fire on any descendant (e.g. the horizontally-scrolled
+  // .table-scroll) - closes the popover rather than leaving it visually
+  // detached from the icon it was pointing at.
+  document.addEventListener("scroll", () => closeMissingDataPopover(), true);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeMissingDataPopover();
+  });
+}
 
 function starString(rating) {
   return "\u2605".repeat(rating) + "\u2606".repeat(5 - rating);
@@ -1370,21 +1723,29 @@ function rainChanceClass(pct) {
   return "";
 }
 
-// 8-stage weather-map temperature colour scale (deep violet = extreme cold -> magenta = extreme heat).
+// Air-temperature colour scale (deep violet = extreme cold -> magenta =
+// dangerous heat), following the standard meteorological "cold blue -> hot
+// red" map convention (e.g. BOM/weather.com temperature outlook maps).
+// Earlier revisions used only 8 wide bands (e.g. a single "green" covering
+// all of 10-20C and a single "gold" covering all of 20-30C) which, for this
+// app's sub-tropical Australian locations where daily temps mostly sit
+// 15-35C, meant most real-world values collapsed into just two colours.
+// Rebalanced to finer ~3-5C steps across that common range (keeping wide,
+// coarse bands only at the rare extremes) so the colour is actually useful
+// for at-a-glance comparison between days, not just a decoration.
 const TEMP_SCALE = [
-  { max: -10, color: "#5E35B1" }, // below -10C: deep violet
-  { max: 0, color: "#1565C0" },   // -10 to 0C: dark blue
-  { max: 10, color: "#0288D1" },  // 0 to 10C: light blue/cyan
-  { max: 20, color: "#43A047" },  // 10 to 20C: green
-  { max: 30, color: "#FDD835" },  // 20 to 30C: gold
-  { max: 35, color: "#FB8C00" },  // 30 to 35C: orange
-  { max: 40, color: "#E53935" },  // 35 to 40C: crimson red
-  { max: Infinity, color: "#D81B60" }, // above 40C: magenta
+  { max: -10, color: "#4A148C" }, // below -10C: deep violet - extreme cold
+  { max: 0, color: "#1565C0" },   // -10 to 0C: dark blue - freezing
+  { max: 10, color: "#0288D1" },  // 0 to 10C: blue - cold
+  { max: 15, color: "#00ACC1" },  // 10 to 15C: cyan/teal - cool
+  { max: 20, color: "#43A047" },  // 15 to 20C: green - mild
+  { max: 25, color: "#9CCC65" },  // 20 to 25C: light green/lime - pleasant
+  { max: 28, color: "#FDD835" },  // 25 to 28C: gold - warm
+  { max: 32, color: "#FB8C00" },  // 28 to 32C: orange - hot
+  { max: 36, color: "#F4511E" },  // 32 to 36C: deep orange - very hot
+  { max: 40, color: "#E53935" },  // 36 to 40C: red - extreme heat
+  { max: Infinity, color: "#AD1457" }, // above 40C: magenta/crimson - dangerous heat
 ];
-
-// Luminance-based contrast: light backgrounds (cyan, green, gold) get black text,
-// dark/saturated backgrounds (violet, dark blue, crimson, magenta) get white text.
-const TEMP_WHITE_TEXT_MAX_INDEX = new Set([0, 1, 6, 7]); // violet, dark blue, crimson, magenta
 
 function tempColor(tempC) {
   if (tempC == null) return null;
@@ -1394,19 +1755,48 @@ function tempColor(tempC) {
   return TEMP_SCALE[TEMP_SCALE.length - 1].color;
 }
 
-function tempStageIndex(tempC) {
-  for (let i = 0; i < TEMP_SCALE.length; i++) {
-    if (tempC < TEMP_SCALE[i].max || TEMP_SCALE[i].max === Infinity) return i;
-  }
-  return TEMP_SCALE.length - 1;
-}
-
+// Shared luminance-based contrast picker (see readableTextColor() below)
+// replaces this scale's own former fixed white-text index set, which had
+// to be manually kept in sync with the breakpoints above every time they
+// changed - fragile, and already proven unnecessary by the Current/
+// Pressure scales' use of the same picker.
 function tempStyle(tempC, isPrint) {
   const color = tempColor(tempC);
   if (!color || isPrint) return "";
-  const idx = tempStageIndex(tempC);
-  const textColor = TEMP_WHITE_TEXT_MAX_INDEX.has(idx) ? "#fff" : "#111";
-  return ` style="background-color:${color};color:${textColor}"`;
+  return ` style="background-color:${color};color:${readableTextColor(color)}"`;
+}
+
+// Sea-surface-temperature colour scale - deliberately a *different*, much
+// narrower scale than the air-temperature one above (SEA_TEMP_SCALE spans
+// roughly 15-31C vs TEMP_SCALE's -10-40C+) since Australian coastal sea
+// temps vary far less than air temps and anglers care about finer
+// distinctions within that narrow band (many sportfish have a preferred
+// "sweet spot" roughly 22-27C; low-20s and below is cool-water fishing,
+// high-20s/30+ starts approaching marine-heatwave/coral-bleaching
+// territory for reef species) - see docs/ARCHITECTURE.md for sourcing
+// notes.
+const SEA_TEMP_SCALE = [
+  { max: 18, color: "#1565C0" }, // below 18C: cold - deep blue
+  { max: 21, color: "#0288D1" }, // 18-21C: cool - blue
+  { max: 24, color: "#00ACC1" }, // 21-24C: mild - cyan/teal
+  { max: 27, color: "#43A047" }, // 24-27C: pleasant - green (sweet spot for many species)
+  { max: 29, color: "#FDD835" }, // 27-29C: warm - gold
+  { max: 31, color: "#FB8C00" }, // 29-31C: hot - orange
+  { max: Infinity, color: "#E53935" }, // above 31C: very hot - red (marine-heatwave range)
+];
+
+function seaTempColor(tempC) {
+  if (tempC == null) return null;
+  for (const stage of SEA_TEMP_SCALE) {
+    if (tempC < stage.max || stage.max === Infinity) return stage.color;
+  }
+  return SEA_TEMP_SCALE[SEA_TEMP_SCALE.length - 1].color;
+}
+
+function seaTempStyle(tempC, isPrint) {
+  const color = seaTempColor(tempC);
+  if (!color || isPrint) return "";
+  return ` style="background-color:${color};color:${readableTextColor(color)}"`;
 }
 
 // Ocean-current-speed colour scale. There's no single official standard,
@@ -1554,73 +1944,45 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
   // solid black in print regardless. Each day needs its own gradient `id`
   // since all 14 SVGs share one DOM/document.
   const gradientId = `tideGrad-${d.iso}`;
-  const clipId = `tideClip-${d.iso}`;
   const gradientDefs = `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">` +
     `<stop offset="0" stop-color="#0b4f8a"></stop>` +
     `<stop offset="1" stop-color="#bcdcf2"></stop>` +
     `</linearGradient>` +
-    `<clipPath id="${clipId}"><polygon points="${areaPoints}"></polygon></clipPath>` +
     `</defs>`;
 
-  // "King tide" zone shading: a horizontal band marking the top/bottom of
-  // this station's usual tide range (see getStationAnnualExtremes() in
-  // js/tides.js - the station's own highest 25% of highs / lowest 25% of
-  // lows, from the full bundled-year CSV, not just this 14-day window),
-  // clipped to the curve's own filled area (via `clipId` above) so the
-  // shading only actually appears where this day's curve pokes up/down
-  // into that zone, rather than as a distracting full-width stripe
-  // regardless of whether today's tide even reaches it. Screen tints it a
-  // subtle red (`.tide-king-zone`), print instead uses a darker grey fill
-  // (see `.print-table .tide-king-zone`) since colour tinting doesn't
-  // reliably print in B&W. Skipped entirely if this station has no known
-  // threshold (e.g. a flat/degenerate curve).
+  // "King tide" zone shading: a horizontal reference band marking the
+  // top/bottom 25% of this station's usual tide range (see
+  // getStationAnnualExtremes() in js/tides.js - the station's own highest
+  // 25% of highs / lowest 25% of lows, from the full bundled-year CSV, not
+  // just this 14-day window). Each band is anchored at its own edge of the
+  // chart (bottom edge `h` for the low zone, top edge `0` for the high
+  // zone - these correspond to this window's own scale.min/scale.max, so
+  // they're exactly symmetric) and always shows at that minimum size once
+  // the threshold is in visible range at all, then grows further
+  // (following the curve) on whichever specific day(s) actually poke
+  // into/through it - so every day's card carries the same reference
+  // band, and a real crossing reads as an obviously bigger shaded area
+  // rather than a separate, differently-shaped patch. Screen tints the low
+  // zone a subtle red (`.tide-king-zone`) and the high zone a subtle green
+  // (`.tide-king-zone--high`); print instead uses a darker grey fill (see
+  // `.print-table .tide-king-zone`) since colour tinting doesn't reliably
+  // print in B&W. Skipped entirely if this station has no known threshold
+  // (e.g. a flat/degenerate curve).
   let kingZoneSvg = "";
   if (scale.kingHigh != null && scale.kingLow != null) {
     const yKingHigh = yFor(scale.kingHigh);
     const yKingLow = yFor(scale.kingLow);
     let highZoneSvg = "";
     if (yKingHigh > 0) {
-      // High zone: mirrors the low zone below (clamped polygon, top edge
-      // instead of bottom edge). Real crossings here are often much
-      // smaller/briefer than a typical king-low dip (this window's
-      // tallest tide may only nudge a fraction of a metre past the
-      // station's annual top-25% threshold, for well under an hour), so
-      // the resulting patch is widened to a minimum on-screen size
-      // (MIN_KING_ZONE_PX tall / MIN_KING_ZONE_WIDTH_PX wide) wherever it
-      // crosses at all, rather than collapsing to a sub-pixel dot.
-      const MIN_KING_ZONE_PX = 4, MIN_KING_ZONE_WIDTH_PX = 8;
-      const crossIdx = [];
-      points.forEach((p, i) => { if (yFor(p.h) < yKingHigh) crossIdx.push(i); });
-      let widenFrom = -1, widenTo = -1;
-      if (crossIdx.length) {
-        let lo = crossIdx[0], hi = crossIdx[crossIdx.length - 1];
-        while ((hi - lo) * stepX < MIN_KING_ZONE_WIDTH_PX && (lo > 0 || hi < points.length - 1)) {
-          if (lo > 0) lo--;
-          if ((hi - lo) * stepX < MIN_KING_ZONE_WIDTH_PX && hi < points.length - 1) hi++;
-        }
-        widenFrom = lo; widenTo = hi;
-      }
-      const highCoords = points.map((p, i) => {
-        const cy = yFor(p.h);
-        const inZone = i >= widenFrom && i <= widenTo;
-        const top = inZone ? Math.min(cy, yKingHigh - MIN_KING_ZONE_PX) : yKingHigh;
-        return `${(i * stepX).toFixed(1)},${Math.max(0, top).toFixed(1)}`;
-      });
-      highZoneSvg = `<polygon points="0,${yKingHigh.toFixed(1)} ${highCoords.join(" ")} ${w},${yKingHigh.toFixed(1)}" class="tide-king-zone tide-king-zone--high"></polygon>`;
+      const highCoords = points.map((p, i) => `${(i * stepX).toFixed(1)},${Math.min(yFor(p.h), yKingHigh).toFixed(1)}`);
+      highZoneSvg = `<polygon points="0,0 ${highCoords.join(" ")} ${w},0" class="tide-king-zone tide-king-zone--high"></polygon>`;
     }
     let lowZoneSvg = "";
     if (yKingLow < h) {
-      // Low zone: the area fill always extends down to the bottom edge
-      // regardless of the curve's height at that x, so clipping a rect the
-      // same way as above would (wrongly) shade the full width. Instead
-      // build a dedicated polygon whose top edge is clamped to
-      // max(curveY, yKingLow) - this collapses to zero height wherever the
-      // curve stays above (i.e. shallower than) the threshold, and only
-      // gains area where the curve actually dips below it.
       const lowCoords = points.map((p, i) => `${(i * stepX).toFixed(1)},${Math.max(yFor(p.h), yKingLow).toFixed(1)}`);
       lowZoneSvg = `<polygon points="0,${h} ${lowCoords.join(" ")} ${w},${h}" class="tide-king-zone tide-king-zone--low"></polygon>`;
     }
-    kingZoneSvg = highZoneSvg + `<g clip-path="url(#${clipId})">${lowZoneSvg}</g>`;
+    kingZoneSvg = highZoneSvg + lowZoneSvg;
   }
 
   // Night shading: darken the portion of the 24h width that falls before
@@ -1729,44 +2091,47 @@ function tideCurveSvg(d, scale, intervalHours, isPrint) {
         `<span class="tide-ref-time ${sideClass}" style="left:${xPct.toFixed(1)}%; top:${yPct.toFixed(1)}%;">${arrow}\u2009\u2009${fmtTime(c.t, d.tz)}</span>`;
     }).join("");
     // The line's own height value, written once per day - placed
-    // explicitly in the "free space" between adjacent H/L markers (the
-    // midpoint of each gap along the x-axis, from day-start to the first
-    // marker, between each consecutive pair of markers, and from the
-    // last marker to day-end), rather than picked purely by "biggest
-    // vertical gap from the line" - that naturally tends to land right ON
-    // a peak/trough (where a marker's own label already sits), which is
-    // the opposite of free space. Segments narrower than
-    // MIN_SEGMENT_W are skipped (not enough width for a label without
-    // crowding both neighbouring markers); among the remaining segment
-    // midpoints, the one where the curve is vertically furthest from the
-    // line is chosen, so the label also tends to land somewhere the curve
-    // itself isn't close to the line either.
+    // explicitly in the "free space" between adjacent H/L markers (so it
+    // never lands at a marker's own position, where that marker's H/L
+    // text already sits), and - within that open segment - at whichever
+    // sampled point along the curve sits furthest from the line (i.e. the
+    // peak/trough closest to the middle of the segment), rather than at
+    // the segment's plain geometric time-midpoint. The midpoint alone
+    // isn't reliable since the curve rises/falls roughly monotonically
+    // between two markers - its value at the exact time-midpoint can
+    // still land right on (or very close to) the line, which is what
+    // caused the label to sit on top of the curve on some days. Segments
+    // narrower than MIN_SEGMENT_W are skipped outright (not enough width
+    // for a label without crowding both neighbouring markers), and a
+    // margin is trimmed off each end of the remaining segments so the
+    // chosen point also can't land right next to a marker's own label.
     const markerXsSorted = markerDefs.map((m) => xFor(m.dt)).sort((a, b) => a - b);
     const boundaryXs = [0, ...markerXsSorted, w];
     const MIN_SEGMENT_W = w * 0.32;
-    let bestMidX = null, bestGapPx = -1, bestCurveY = null;
+    const SEGMENT_EDGE_MARGIN_FRAC = 0.14;
+    let bestX = null, bestGapPx = -1, bestCurveY = null;
     for (let i = 0; i < boundaryXs.length - 1; i++) {
-      const segW = boundaryXs[i + 1] - boundaryXs[i];
+      const segStart = boundaryXs[i], segEnd = boundaryXs[i + 1];
+      const segW = segEnd - segStart;
       if (segW < MIN_SEGMENT_W) continue;
-      const midX = (boundaryXs[i] + boundaryXs[i + 1]) / 2;
-      const midMs = dayStartMs + (midX / w) * dayMs;
-      let j = 0;
-      while (j < points.length - 1 && points[j + 1].t.getTime() < midMs) j++;
-      const p0 = points[j], p1 = points[Math.min(j + 1, points.length - 1)];
-      const span = p1.t.getTime() - p0.t.getTime();
-      const frac = span > 0 ? (midMs - p0.t.getTime()) / span : 0;
-      const midCurveY = yFor(p0.h + (p1.h - p0.h) * frac);
-      const gapPx = Math.abs(midCurveY - lineY);
-      if (gapPx > bestGapPx) { bestGapPx = gapPx; bestMidX = midX; bestCurveY = midCurveY; }
+      const margin = segW * SEGMENT_EDGE_MARGIN_FRAC;
+      const safeStart = segStart + margin, safeEnd = segEnd - margin;
+      points.forEach((p, idx) => {
+        const x = idx * stepX;
+        if (x < safeStart || x > safeEnd) return;
+        const curveY = yFor(p.h);
+        const gapPx = Math.abs(curveY - lineY);
+        if (gapPx > bestGapPx) { bestGapPx = gapPx; bestX = x; bestCurveY = curveY; }
+      });
     }
     // Degenerate fallback (markers packed too tight to leave any segment
     // wide enough): just use the day's dead centre.
-    if (bestMidX == null) {
-      bestMidX = w / 2;
+    if (bestX == null) {
+      bestX = w / 2;
       const midIdx = Math.floor((points.length - 1) / 2);
       bestCurveY = yFor(points[midIdx].h);
     }
-    const labelXPct = (bestMidX / w) * 100;
+    const labelXPct = (bestX / w) * 100;
     // Curve sits above the line on-screen (smaller y = higher tide) at
     // this x -> that space is occupied, so the label goes below instead;
     // otherwise (curve below the line, e.g. near a low) the label sits
@@ -2104,7 +2469,7 @@ function waveEnergyStyle(kj, isPrint) {
 // always sits directly above its value. The swell-direction arrow sits
 // between the two bars (with period printed underneath).
 function waveIconSvg(d, waveScale, isPrint) {
-  if (d.waveHeight == null || !waveScale) return '<span class="muted">\u2014</span>';
+  if (d.waveHeight == null || !waveScale) return missingDataCell(isPrint, d.marineMissingReason);
   const w = 150, h = 46, padY = 3, padX = 10, barW = 32;
   const max = waveScale.max || 1;
   const barBottomY = h - 2;
@@ -2306,7 +2671,7 @@ function timelineWrapAttrs(d, step, isPrint) {
 }
 
 function windTimelineHtml(d, intervalHours, isPrint) {
-  if (!d.windHourly || !d.windHourly.length) return '<span class="muted">\u2014</span>';
+  if (!d.windHourly || !d.windHourly.length) return missingDataCell(isPrint, d.weatherMissingReason);
   const step = intervalHours || 2;
   const hours = d.windHourly.filter((h) => h.hour % step === 0);
   const maxSpeedForScale = Math.max(60, ...hours.map((h) => h.speed || 0));
@@ -2383,7 +2748,7 @@ function miniCurrentArrowSvg(currentDir, magnitude, maxScale) {
 // curve's axis - all line up on the same time grid). Sourced from the
 // Marine API's hourly ocean current fields (see hourlyCurrentForDay()).
 function currentTimelineHtml(d, intervalHours, isPrint) {
-  if (!d.currentHourly || !d.currentHourly.length) return '<span class="muted">\u2014</span>';
+  if (!d.currentHourly || !d.currentHourly.length) return missingDataCell(isPrint, d.marineMissingReason);
   const step = intervalHours || 2;
   const hours = d.currentHourly.filter((h) => h.hour % step === 0);
   const maxSpeedForScale = Math.max(3, ...hours.map((h) => h.speed || 0));
@@ -2459,7 +2824,7 @@ function miniHeightBarBg(val, maxH, isPrint) {
 // the Wind/Current timeline rows (mirrors hourlyWaveForDay()). Screen-only
 // by default, but user-togglable into print (see ROW_DEFS `printDefault`).
 function waveTimelineHtml(d, scale, intervalHours, isPrint) {
-  if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
+  if (!d.waveHourly || !d.waveHourly.length) return missingDataCell(isPrint, d.marineMissingReason);
   const step = intervalHours || 2;
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => Math.max(h.wave || 0, h.swell || 0)));
@@ -2489,7 +2854,7 @@ function waveTimelineHtml(d, scale, intervalHours, isPrint) {
 // the daily Waves/Swell summary row. Screen-only by default, but the user
 // can opt into printing it too (see `printDefault` in ROW_DEFS).
 function swellTimelineHtml(d, scale, intervalHours, isPrint) {
-  if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
+  if (!d.waveHourly || !d.waveHourly.length) return missingDataCell(isPrint, d.marineMissingReason);
   const step = intervalHours || 2;
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => h.swell || 0));
@@ -2517,7 +2882,7 @@ function swellTimelineHtml(d, scale, intervalHours, isPrint) {
 // timeline rows' print convention) since wind chop is a quick, useful read
 // for boat-launch safety/comfort even on the laminated sheet.
 function windWaveTimelineHtml(d, intervalHours, isPrint, scale) {
-  if (!d.waveHourly || !d.waveHourly.length) return '<span class="muted">\u2014</span>';
+  if (!d.waveHourly || !d.waveHourly.length) return missingDataCell(isPrint, d.marineMissingReason);
   const step = intervalHours || 2;
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => h.windWave || 0));
@@ -2555,7 +2920,7 @@ function miniRainBarBg(val, maxR, isPrint) {
 // total-for-the-day figure by showing *when* through the day it's likely
 // to fall.
 function rainTimelineHtml(d, intervalHours, isPrint, scale) {
-  if (!d.rainHourly || !d.rainHourly.length) return '<span class="muted">\u2014</span>';
+  if (!d.rainHourly || !d.rainHourly.length) return missingDataCell(isPrint, d.weatherMissingReason);
   const step = intervalHours || 2;
   const hours = d.rainHourly.filter((h) => h.hour % step === 0);
   const maxR = scale?.max || Math.max(0.5, ...hours.map((h) => h.rain || 0));
@@ -2617,7 +2982,7 @@ function sunPositionIconSvg(altitude, azimuth) {
 // (temperature broadly tracks how high the sun is) and it fills what would
 // otherwise be an empty gap under a plain value-only row.
 function tempTimelineHtml(d, intervalHours, isPrint) {
-  if (!d.tempHourly || !d.tempHourly.length) return '<span class="muted">\u2014</span>';
+  if (!d.tempHourly || !d.tempHourly.length) return missingDataCell(isPrint, d.weatherMissingReason);
   const step = intervalHours || 2;
   const hours = d.tempHourly.filter((h) => h.hour % step === 0);
   const sunByHour = new Map((d.sunHourly || []).map((h) => [h.hour, h]));
@@ -2724,8 +3089,8 @@ const ROW_DEFS = [
     key: "solunar", label: "Solunar", labelIcon: fishLabelIconSvg(),
     render: (d) => `<span class="stars" title="Approximate rating">${starString(d.solunar.rating)}</span>`,
   },
-  { key: "tideHigh", label: "High tide", hasData: (d) => !d.tidesMissing, render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCell(d.tideHighs, d.tz, d.sunrise, d.sunset, scales?.curveScale, "high", isPrint) },
-  { key: "tideLow", label: "Low tide", hasData: (d) => !d.tidesMissing, render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCell(d.tideLows, d.tz, d.sunrise, d.sunset, scales?.curveScale, "low", isPrint) },
+  { key: "tideHigh", label: "High tide", hasData: (d) => !d.tidesMissing, render: (d, scales, isPrint) => d.tidesMissing ? missingDataCell(isPrint, d.tidesMissingReason) : tideCell(d.tideHighs, d.tz, d.sunrise, d.sunset, scales?.curveScale, "high", isPrint) },
+  { key: "tideLow", label: "Low tide", hasData: (d) => !d.tidesMissing, render: (d, scales, isPrint) => d.tidesMissing ? missingDataCell(isPrint, d.tidesMissingReason) : tideCell(d.tideLows, d.tz, d.sunrise, d.sunset, scales?.curveScale, "low", isPrint) },
   {
     key: "tideCurve", label: "Tide curve", cellClass: "tide-curve-cell",
     labelIcon: () => `<span class="tide-ref-input-wrap no-print" title="Enter a critical tide height to plan a departure/return window">` +
@@ -2734,12 +3099,12 @@ const ROW_DEFS = [
         ? `<span class="tide-ref-print-label">Traced height: ${refTideHeight.toFixed(2)}m</span>`
         : ""),
     hasData: (d) => !d.tidesMissing,
-    render: (d, scales, isPrint) => d.tidesMissing ? '<span class="warn">&mdash;</span>' : tideCurveSvg(d, scales?.curveScale, isPrint ? 4 : 2, isPrint),
+    render: (d, scales, isPrint) => d.tidesMissing ? missingDataCell(isPrint, d.tidesMissingReason) : tideCurveSvg(d, scales?.curveScale, isPrint ? 4 : 2, isPrint),
   },
   {
     key: "wind", label: "Wind", cellClass: "wind-cell",
     render: (d, scales, isPrint) => {
-      if (d.windSpeed == null) return "\u2014";
+      if (d.windSpeed == null) return missingDataCell(isPrint, d.weatherMissingReason);
       const stat = (label, val) => val == null ? "" :
         `<div class="wind-stat"><span class="wind-stat-label">${label}</span><span class="wind-stat-val" style="${isPrint ? "" : windSpeedStyle(val)}">${val.toFixed(0)}</span></div>`;
       return `<div class="wind-cell-row">` +
@@ -2787,17 +3152,22 @@ const ROW_DEFS = [
     key: "waveEnergy", label: "Wave energy",
     hasData: (d) => d.waveEnergy != null,
     render: (d, scales, isPrint) => {
-      if (d.waveEnergy == null) return "\u2014";
+      if (d.waveEnergy == null) return missingDataCell(isPrint, d.marineMissingReason);
       const band = waveEnergyBand(d.waveEnergy);
       const labels = { flat: "Flat", small: "Small", punchy: "Punchy", heavy: "Heavy", extreme: "Extreme" };
       const sep = isPrint ? " \u00b7 " : "<br>";
       return `<span class="wave-energy-pill"${waveEnergyStyle(d.waveEnergy, isPrint)}>${Math.round(d.waveEnergy)} kJ</span>${sep}<span class="muted">${labels[band] ?? ""}</span>`;
     },
   },
-  { key: "seaTemp", label: "Sea temp", hasData: (d) => d.seaTemp != null, render: (d) => d.seaTemp == null ? "\u2014" : `${d.seaTemp.toFixed(1)}\u00B0C` },
+  {
+    key: "seaTemp", label: "Sea temp", hasData: (d) => d.seaTemp != null,
+    render: (d, scales, isPrint) => d.seaTemp == null ? missingDataCell(isPrint, d.marineMissingReason) :
+      `<span class="temp-pill"${seaTempStyle(d.seaTemp, isPrint)}>${d.seaTemp.toFixed(1)}\u00B0C</span>`,
+  },
   {
     key: "weather", label: "Weather",
-    render: (d, scales, isPrint) => `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}${d.uvIndexMax != null ? ` ${uvBadgeHtml(d.uvIndexMax)}` : ""}`,
+    render: (d, scales, isPrint) => d.weatherMissing ? missingDataCell(isPrint, d.weatherMissingReason) :
+      `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}${d.uvIndexMax != null ? ` ${uvBadgeHtml(d.uvIndexMax)}` : ""}`,
   },
   {
     key: "tempTimeline", label: "Temperature", cellClass: "wind-timeline-cell-wrap", printDefault: false,
@@ -2806,11 +3176,12 @@ const ROW_DEFS = [
   },
   {
     key: "pressure", label: "Pressure", printDefault: false,
-    render: (d) => d.pressure == null ? "\u2014" : `<span class="pressure-pill"${pressureStyle(d.pressure)}>${Math.round(d.pressure)} hPa</span>`,
+    render: (d, scales, isPrint) => d.pressure == null ? missingDataCell(isPrint, d.weatherMissingReason) : `<span class="pressure-pill"${pressureStyle(d.pressure)}>${Math.round(d.pressure)} hPa</span>`,
   },
   {
     key: "rain", label: "Rain",
-    render: (d) => {
+    render: (d, scales, isPrint) => {
+      if (d.weatherMissing) return missingDataCell(isPrint, d.weatherMissingReason);
       const icon = precipIconSvg(weatherPrecipCategory(d.weatherCode));
       return `${icon ? `<span class="wx-icon-row">${icon}</span>` : ""}<span class="${rainChanceClass(d.rainChance)}">${d.rainMm != null ? d.rainMm.toFixed(1) : "0.0"}mm (${d.rainChance ?? 0}%)</span>`;
     },
@@ -2822,7 +3193,7 @@ const ROW_DEFS = [
   },
   {
     key: "sun", label: "Sun",
-    render: (d) => `&uarr; ${fmtTime(d.sunrise, d.tz)} &nbsp; &darr; ${fmtTime(d.sunset, d.tz)}`,
+    render: (d, scales, isPrint) => (d.sunrise == null && d.sunset == null) ? missingDataCell(isPrint, d.weatherMissingReason) : `&uarr; ${fmtTime(d.sunrise, d.tz)} &nbsp; &darr; ${fmtTime(d.sunset, d.tz)}`,
   },
   {
     key: "moon", label: "Moon",
@@ -2830,7 +3201,7 @@ const ROW_DEFS = [
   },
 ];
 
-function buildTable(days, className, scales, printRowToggles) {
+function buildTable(days, className, scales, printRowToggles, screenRowToggles) {
   const isPrint = className.includes("print-table");
   const table = document.createElement("table");
   table.className = className;
@@ -2844,21 +3215,20 @@ function buildTable(days, className, scales, printRowToggles) {
 
   const tbody = document.createElement("tbody");
   for (const row of ROW_DEFS) {
-    // Every row is individually toggle-able for print via the settings
-    // panel checkboxes (built from ROW_DEFS itself - see
-    // buildPrintRowToggleCheckboxes()), persisted per row `key` in
-    // `printRowToggles`/localStorage. Screen view always shows every row
-    // regardless of this setting - it only affects the print tables.
+    // Every row is individually toggle-able for both print (via
+    // printRowToggles/#printRowCheckboxes) and screen (via
+    // screenRowToggles/#screenRowCheckboxes) - two fully independent
+    // preferences, each persisted per row `key` in its own localStorage
+    // key (see defaultPrintRowToggles()/defaultScreenRowToggles() above).
     if (isPrint && !printRowToggles?.[row.key]) continue;
+    if (!isPrint && !screenRowToggles?.[row.key]) continue;
     // Rows that declare `hasData` (currently the marine-derived ones -
     // waves/swell/wind chop/wave energy/sea temp/current, which all go
     // genuinely blank rather than partially blank when the Marine API has
     // nothing for this coordinate/date range - see buildPlan()'s
-    // marineLat/marineLon and the "Waves/swell/sea temp unavailable..."
-    // warning built from weatherNotes) are hidden entirely - on both
-    // screen and print - rather than rendered as an unbroken column of
-    // "\u2014" placeholders, when not even one visible day has real data
-    // for them. The warning banner (#dataWarning) still explains why.
+    // marineLat/marineLon) are hidden entirely - on both screen and print -
+    // rather than rendered as an unbroken column of warning icons, when
+    // not even one visible day has real data for them.
     if (row.hasData && !days.some((d) => row.hasData(d))) continue;
     const tr = document.createElement("tr");
     const cellClass = row.cellClass ? ` class="${row.cellClass}"` : "";
@@ -3041,11 +3411,17 @@ function wireScrollAxisLock(container) {
 
 function render(days, settings, tideMeta) {
   lastRenderArgs = { days, settings, tideMeta };
+  // Full table rebuild below invalidates any open popover's button
+  // reference and every previously-registered reason id - clear both so
+  // we don't leak detached DOM nodes or resolve a stale/wrong-index id.
+  closeMissingDataPopover();
+  missingReasonRegistry = [];
   $("locationTitle").textContent = settings.name;
   updateLocationSubtitle(settings.name, tideMeta.tideStationInfo);
   document.title = `${settings.name} \u2014 FishingSolunar`;
 
   const printRowToggles = loadPrintRowToggles();
+  const screenRowToggles = loadScreenRowToggles();
   const root = $("plannerRoot");
   // render() fully rebuilds the table (root.innerHTML = "" below), which
   // throws away the old `.table-scroll` element - a brand new one always
@@ -3062,7 +3438,7 @@ function render(days, settings, tideMeta) {
   // --- interactive (screen) table ---
   const screenWrap = document.createElement("div");
   screenWrap.className = "table-scroll no-print";
-  screenWrap.appendChild(buildTable(days, "planner-table", scales, printRowToggles));
+  screenWrap.appendChild(buildTable(days, "planner-table", scales, printRowToggles, screenRowToggles));
   root.appendChild(screenWrap);
   if (prevScrollLeft || prevScrollTop) {
     screenWrap.scrollLeft = prevScrollLeft;
@@ -3092,28 +3468,19 @@ function render(days, settings, tideMeta) {
     heading.className = "print-heading";
     heading.textContent = `${settings.name} \u2014 ${half[0].dayMonth} to ${half[half.length - 1].dayMonth}`;
     rotate.appendChild(heading);
-    rotate.appendChild(buildTable(half, "planner-table print-table", scales, printRowToggles));
+    rotate.appendChild(buildTable(half, "planner-table print-table", scales, printRowToggles, screenRowToggles));
     page.appendChild(rotate);
     printWrap.appendChild(page);
   }
   root.appendChild(printWrap);
 
-  const warningEl = $("dataWarning");
-  const missingCount = days.filter((d) => d.tidesMissing).length;
-  const messages = [];
-  if (missingCount) {
-    const extra = tideMeta.notes.length ? ` (${tideMeta.notes.join("; ")})` : "";
-    messages.push(`\u26A0 Tide highs/lows unavailable for ${missingCount} of 14 day(s)${extra}. Add a WorldTides API key in \u2699 Settings as a fallback, or add a local tide file (see docs/DATA_SOURCES.md).`);
-  }
-  if (tideMeta.weatherNotes && tideMeta.weatherNotes.length) {
-    messages.push(`\u26A0 ${tideMeta.weatherNotes.join("; ")}. Open-Meteo's live weather/marine data only covers roughly 3 months back to ~16 days ahead of today \u2014 pick a start date within that window (no API key needed for this).`);
-  }
-  if (messages.length) {
-    warningEl.hidden = false;
-    warningEl.textContent = messages.join(" ");
-  } else {
-    warningEl.hidden = true;
-  }
+  // Per-day tide/weather/marine gaps are now explained inline via each
+  // cell's own tap/click-able warning icon (see missingDataCell() and
+  // ROW_DEFS above) rather than a single combined #dataWarning banner
+  // strip across the top of the page - this used to take up permanent
+  // screen real-estate even when only a day or two near the end of the
+  // window was affected, and conflated distinct causes (tide/weather/
+  // marine) into one message.
   setStatus("");
 
   const noteEl = $("tideSourceNote");
@@ -3191,6 +3558,16 @@ function updateLastUpdatedLabel(oldestFetchedAt) {
   el.textContent = timeText;
   el.title = el.textContent;
   el.hidden = false;
+  // Age-tinted so a kiosk tab (or anyone who's just left the tab open)
+  // can tell at a glance that the figures on screen, while still shown
+  // (cached data is better than none), are getting old: plain once fresh,
+  // bold dark-red past STALE_AFTER_MS (6h - the same threshold the
+  // #staleBadge above uses), escalating to a bold white-on-bright-red
+  // "glow" once it's been VERY_STALE_AFTER_MS (5 days) - well past the
+  // point a refresh should have succeeded by now.
+  const VERY_STALE_AFTER_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
+  el.classList.toggle("last-updated--stale", ageMs > STALE_AFTER_MS && ageMs <= VERY_STALE_AFTER_MS);
+  el.classList.toggle("last-updated--very-stale", ageMs > VERY_STALE_AFTER_MS);
 }
 
 // ---------- location subtitle (header, under the title) ----------
@@ -3508,8 +3885,8 @@ async function refresh() {
   saveSettings(settings);
   setStatus("Loading\u2026");
   try {
-    const { days, tideSource, tideNotes, tideStationInfo, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, rainTimelineScale, dataFromCache, oldestFetchedAt } = await buildPlan(settings);
-    render(days, settings, { source: tideSource, notes: tideNotes, tideStationInfo, weatherNotes, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, rainTimelineScale, dataFromCache, oldestFetchedAt });
+    const { days, tideSource, tideNotes, tideStationInfo, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, rainTimelineScale, dataFromCache, oldestFetchedAt } = await buildPlan(settings);
+    render(days, settings, { source: tideSource, notes: tideNotes, tideStationInfo, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, rainTimelineScale, dataFromCache, oldestFetchedAt });
   } catch (err) {
     console.error(err);
     setStatus("Error loading data: " + err.message, true);
@@ -3687,6 +4064,33 @@ function init() {
     });
   }
 
+  // Screen-row inclusion checkboxes: same mechanism as the print-row ones
+  // above (one per ROW_DEFS row, built dynamically), but a fully
+  // independent on/off preference that controls the interactive table
+  // instead of the printed sheet - lets someone hide rows they don't care
+  // about day-to-day (e.g. Pressure, Current) to cut down scrolling,
+  // without that also affecting what ends up on a printed/laminated copy.
+  const savedScreenToggles = loadScreenRowToggles();
+  const screenCheckboxContainer = $("screenRowCheckboxes");
+  for (const row of ROW_DEFS) {
+    const labelText = row.labelSub ? `${row.label} ${row.labelSub.screen}` : row.label;
+    const label = document.createElement("label");
+    label.className = "checkbox-label";
+    const el = document.createElement("input");
+    el.type = "checkbox";
+    el.id = `screenRow-${row.key}`;
+    el.checked = !!savedScreenToggles[row.key];
+    label.appendChild(el);
+    label.appendChild(document.createTextNode(` ${labelText}`));
+    screenCheckboxContainer.appendChild(label);
+    el.addEventListener("change", () => {
+      const toggles = loadScreenRowToggles();
+      toggles[row.key] = el.checked;
+      saveScreenRowToggles(toggles);
+      if (lastRenderArgs) render(lastRenderArgs.days, lastRenderArgs.settings, lastRenderArgs.tideMeta);
+    });
+  }
+
   $("settingsToggle").addEventListener("click", () => {
     $("settingsPanel").hidden = !$("settingsPanel").hidden;
   });
@@ -3694,9 +4098,32 @@ function init() {
     e.preventDefault();
     refresh();
   });
+
+  $("northCompassToggle").addEventListener("click", () => {
+    const panel = $("northCompassPanel");
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) renderNorthCompassWidget();
+  });
+  renderNorthCompassWidget(); // paint the header button's live compass icon immediately, regardless of panel state
+  document.addEventListener("click", (e) => {
+    const panel = $("northCompassPanel");
+    if (!panel.hidden && !panel.contains(e.target) && !$("northCompassToggle").contains(e.target)) {
+      panel.hidden = true;
+    }
+  });
+  // The compass setting is exposed in two places - the header dropdown
+  // panel and a matching block inside the Settings panel - both driving
+  // the same underlying `northOffsetDeg` value, so wire each input/button
+  // pair up identically rather than duplicating this logic.
+  wireNorthCompassControls("northOffsetInput", "calibrateCompassBtn", "resetCompassBtn", "compassCalibrateStatus");
+  wireNorthCompassControls("northOffsetInputSettings", "calibrateCompassBtnSettings", "resetCompassBtnSettings", "compassCalibrateStatusSettings");
+  wireNorthCompassDial("northCompassSvgWrap");
+  wireNorthCompassDial("northCompassSvgWrapSettings");
+
   $("printBtn").addEventListener("click", () => window.print());
   $("forceRefreshBtn").addEventListener("click", forceRefresh);
   applyIosPrintOrientationFix();
+  wireMissingDataPopover();
 
   // auto-load on first visit if we have a saved/preset location
   refresh();
@@ -3704,6 +4131,32 @@ function init() {
   // If the network comes back after being offline, silently retry so fresh
   // data replaces the cached fallback and the stale badge clears.
   window.addEventListener("online", () => refresh());
+
+  // Keep a long-lived tab (e.g. a kiosk display left open for days) from
+  // ever going stale on its own - nothing else above re-runs refresh() on
+  // a timer, so without this, "Day 1" would stay pinned to whatever day
+  // the page was first opened on (and the weather/marine/tide data would
+  // just sit there ageing) for as long as the tab stays open and online.
+  // Two separate timers cover this:
+  //  - scheduleMidnightRefresh() fires once just after each local
+  //    midnight so the date window always rolls forward onto today,
+  //    re-scheduling itself fresh each time (rather than a plain 24h
+  //    setInterval) so it can't drift off local midnight across a DST
+  //    change or a throttled/backgrounded tab.
+  //  - a periodic refresh on the same cadence as STALE_AFTER_MS (the
+  //    threshold the stale-data badge above already uses), so the actual
+  //    weather/marine data gets re-fetched well before it would be
+  //    flagged stale, not just once a day at midnight.
+  const scheduleMidnightRefresh = () => {
+    const now = new Date();
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+    setTimeout(() => {
+      refresh();
+      scheduleMidnightRefresh();
+    }, nextMidnight.getTime() - now.getTime());
+  };
+  scheduleMidnightRefresh();
+  setInterval(() => refresh(), STALE_AFTER_MS);
 
   // Re-evaluate the badge's age text periodically even without a refresh,
   // so "~6h ago" keeps advancing while the tab stays open.

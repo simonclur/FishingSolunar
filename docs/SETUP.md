@@ -29,8 +29,8 @@ No build step, no dependencies. Either:
    need a WorldTides API key (below) to show tide highs/lows.
 3. **Start date** — the first of the 14 days shown.
 4. **WorldTides API key** — sign up free at <https://www.worldtides.info/>,
-   copy your key in. Without a key, tide high/low cells show "—" and a
-   warning banner appears (everything else still works).
+   copy your key in. Without a key, tide high/low cells show a tap/
+   click-able warning icon explaining why (everything else still works).
 5. Click **Update**. Settings are remembered in the browser (`localStorage`)
    for next time.
 
