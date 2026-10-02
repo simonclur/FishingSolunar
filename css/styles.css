@@ -851,6 +851,11 @@ table.planner-table {
   background: var(--hover-overlay); border-radius: 1px; overflow: hidden;
 }
 .wave-timeline-barbg-fill { width: 100%; }
+/* Rain's bar uses no direction arrow next to it (see miniRainBarBg()), so
+   unlike the Wave/Swell/Current rows its track background just reads as
+   a stray grey box rather than "something behind the arrow" - drop it,
+   leaving only the blue rainfall-amount fill itself. */
+.wave-timeline-barbg--plain { background: none; }
 
 
 /* ---------- responsive: tablet / mobile ---------- */

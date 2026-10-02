@@ -3002,7 +3002,7 @@ function miniRainBarBg(val, maxR, isPrint) {
   if (val == null || !maxR) return "";
   const pct = Math.min(Math.max(val / maxR, 0), 1) * 100;
   const fillColor = isPrint ? "#999" : interpolatedScaleColor(RAIN_SCALE, val);
-  return `<div class="wave-timeline-barbg"><div class="wave-timeline-barbg-fill" style="height:${pct.toFixed(0)}%;background:${fillColor}"></div></div>`;
+  return `<div class="wave-timeline-barbg wave-timeline-barbg--plain"><div class="wave-timeline-barbg-fill" style="height:${pct.toFixed(0)}%;background:${fillColor}"></div></div>`;
 }
 
 // "Rain" timeline row: hourly precipitation amount (mm per interval) as a
