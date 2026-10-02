@@ -33,6 +33,13 @@
   --tide-high-color: #0b4f8a;
   --tide-low-color: #4a90c4;
   --tide-low-dot: #6fb1e0;
+  /* Darkening tint for the Tide curve's night-hours shading (see
+     .tide-night below) - deliberately a literal black rgba(), NOT
+     var(--ink), since --ink flips to near-white in dark theme (it's
+     "primary text colour", not "a colour that darkens things"); using it
+     here would make night hours look LIGHTER than day against the dark
+     navy page background, backwards from the intent. */
+  --tide-night-tint: rgba(0, 0, 0, 0.06);
   --body-bg-image: none;
   font-size: 16px;
 }
@@ -77,6 +84,11 @@ html[data-theme="dark"] {
   --tide-high-color: #4fc3f7;
   --tide-low-color: #81d4fa;
   --tide-low-dot: #4fa8d8;
+  /* Night hours need to darken MORE here, since the page/curve background
+     is already dark navy rather than white - a tint this subtle would be
+     invisible, whereas the light-theme value above is tuned for a white
+     background. */
+  --tide-night-tint: rgba(0, 0, 0, 0.4);
   /* Subtle fixed wave-crest silhouette + a faint moon glow, layered over
      a deep-navy-to-teal gradient "night sea" - low-contrast/low-opacity
      by design so it reads as ambience behind the header/footer/table
@@ -545,7 +557,7 @@ table.planner-table {
 .tide-marker-label-line { white-space: nowrap; }
 .tide-marker-label--high { color: var(--tide-high-color); }
 .tide-marker-label--low { color: var(--tide-low-color); }
-.tide-night { fill: var(--ink); opacity: 0.06; }
+.tide-night { fill: var(--tide-night-tint); }
 /* King-tide zone: a subtle red tint over the portion of each day's curve
    that pokes above/below this station's own usual high/low range (top
    25% of highs / bottom 25% of lows across the bundled-year CSV - see
