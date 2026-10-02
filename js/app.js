@@ -977,7 +977,7 @@ async function fetchWeather(lat, lon, startIso, endIso, tz) {
   const build = (s, e) => `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&daily=temperature_2m_max,temperature_2m_min,windspeed_10m_max,windspeed_10m_mean,windgusts_10m_max,winddirection_10m_dominant,` +
     `sunrise,sunset,precipitation_sum,precipitation_probability_max,weathercode,uv_index_max` +
-    `&hourly=windspeed_10m,winddirection_10m,pressure_msl,temperature_2m,precipitation,relative_humidity_2m` +
+    `&hourly=windspeed_10m,winddirection_10m,pressure_msl,temperature_2m,precipitation,relative_humidity_2m,dewpoint_2m,apparent_temperature` +
     `&start_date=${s}&end_date=${e}&timezone=${encodeURIComponent(tz)}`;
   let res = await fetch(build(startIso, endIso));
   if (!res.ok) {
@@ -1075,6 +1075,45 @@ function hourlyHumidityForDay(weatherHourly, isoDay, intervalHours) {
     const hour = parseInt(times[i].slice(11, 13), 10);
     if (hour % step !== 0) continue;
     out.push({ hour, humidity: humidity ? humidity[i] : null });
+  }
+  return out;
+}
+
+// Same idea again, for hourly dew point (`&hourly=...,dewpoint_2m`) - feeds
+// the "Dew Point" timeline row. Dew point (rather than raw humidity %) is
+// what actually tracks mugginess/comfort, since it's not relative to the
+// air's current temperature.
+function hourlyDewPointForDay(weatherHourly, isoDay, intervalHours) {
+  const step = intervalHours || 2;
+  if (!weatherHourly || !weatherHourly.time) return [];
+  const times = weatherHourly.time;
+  const dewPoint = weatherHourly.dewpoint_2m;
+  const out = [];
+  for (let i = 0; i < times.length; i++) {
+    if (!times[i].startsWith(isoDay)) continue;
+    const hour = parseInt(times[i].slice(11, 13), 10);
+    if (hour % step !== 0) continue;
+    out.push({ hour, dewPoint: dewPoint ? dewPoint[i] : null });
+  }
+  return out;
+}
+
+// Same idea again, for hourly "feels like" temperature
+// (`&hourly=...,apparent_temperature`) - feeds the "Feels Like" timeline
+// row, Open-Meteo's wind-chill/humidity/radiation-adjusted apparent
+// temperature (distinct from the plain air temperature shown by the
+// existing Temperature row).
+function hourlyFeelsLikeForDay(weatherHourly, isoDay, intervalHours) {
+  const step = intervalHours || 2;
+  if (!weatherHourly || !weatherHourly.time) return [];
+  const times = weatherHourly.time;
+  const feelsLike = weatherHourly.apparent_temperature;
+  const out = [];
+  for (let i = 0; i < times.length; i++) {
+    if (!times[i].startsWith(isoDay)) continue;
+    const hour = parseInt(times[i].slice(11, 13), 10);
+    if (hour % step !== 0) continue;
+    out.push({ hour, feelsLike: feelsLike ? feelsLike[i] : null });
   }
   return out;
 }
@@ -1623,6 +1662,8 @@ async function buildPlan(settings) {
       rainHourly: hourlyRainForDay(weather.hourly, iso),
       tempHourly: hourlyTempForDay(weather.hourly, iso),
       humidityHourly: hourlyHumidityForDay(weather.hourly, iso),
+      dewPointHourly: hourlyDewPointForDay(weather.hourly, iso),
+      feelsLikeHourly: hourlyFeelsLikeForDay(weather.hourly, iso),
       sunHourly: hourlySunForDay(iso, lat, lon, tz),
       currentHourly: hourlyCurrentForDay(marine.hourly, iso),
       sunrise,
@@ -1973,6 +2014,31 @@ function humidityColor(pct) {
     if (pct < stage.max || stage.max === Infinity) return stage.color;
   }
   return HUMIDITY_SCALE[HUMIDITY_SCALE.length - 1].color;
+}
+
+// Dew-point colour scale for the "Dew Point" timeline row, based on the
+// standard meteorological "mugginess" comfort bands (in Celsius) - unlike
+// relative humidity %, dew point directly tracks how sticky the air
+// actually feels regardless of temperature, so this uses a dry/comfortable
+// (green) -> muggy/oppressive (purple-red) ramp rather than HUMIDITY_SCALE's
+// plain dry->wet blue ramp.
+const DEWPOINT_SCALE = [
+  { max: 10, color: "#7FA6D9" }, // below 10C: dry - soft blue
+  { max: 13, color: "#8FC9A8" }, // 10-13C: very comfortable - mint green
+  { max: 16, color: "#A8D878" }, // 13-16C: comfortable - green
+  { max: 18, color: "#D9D46A" }, // 16-18C: OK - yellow-green
+  { max: 21, color: "#E8B84A" }, // 18-21C: somewhat humid - gold
+  { max: 24, color: "#E0863C" }, // 21-24C: uncomfortable - orange
+  { max: 26, color: "#D0552E" }, // 24-26C: very uncomfortable - red-orange
+  { max: Infinity, color: "#9C2E5E" }, // above 26C: oppressive - deep magenta/purple
+];
+
+function dewPointColor(tempC) {
+  if (tempC == null) return null;
+  for (const stage of DEWPOINT_SCALE) {
+    if (tempC < stage.max || stage.max === Infinity) return stage.color;
+  }
+  return DEWPOINT_SCALE[DEWPOINT_SCALE.length - 1].color;
 }
 
 // Sea-surface-temperature colour scale - deliberately a *different*, much
@@ -3374,6 +3440,56 @@ function humidityTimelineHtml(d, intervalHours, isPrint, nextDay) {
   return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
 }
 
+// Dew-point timeline row - same layout as Temperature/Humidity above, using
+// DEWPOINT_SCALE/dewPointColor(). Values are plain Celsius temperatures
+// (short, e.g. "14\u00B0") so reuse .temp-timeline-value's horizontal pill
+// rather than Humidity's rotated one.
+function dewPointTimelineHtml(d, intervalHours, isPrint, nextDay) {
+  if (!d.dewPointHourly || !d.dewPointHourly.length) return missingDataCell(isPrint, d.weatherMissingReason);
+  const step = intervalHours || 2;
+  const hours = d.dewPointHourly.filter((h) => h.hour % step === 0);
+  const nextFirstHour = nextDay?.dewPointHourly?.find((h) => h.hour === 0);
+  const nextEdgeColor = nextFirstHour && nextFirstHour.dewPoint != null ? dewPointColor(nextFirstHour.dewPoint) : null;
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.dewPoint != null ? dewPointColor(h.dewPoint) : null, isPrint, nextEdgeColor);
+  const cells = hours.map((h) => {
+    const hh = String(h.hour).padStart(2, "0");
+    const leftPct = (h.hour / 24) * 100;
+    const val = h.dewPoint;
+    const color = val != null ? dewPointColor(val) : null;
+    const pillStyle = !isPrint && color ? `background-color:${color};color:${readableTextColor(color)}` : "";
+    return `<div class="wind-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
+      `<div class="wind-timeline-hour">${hh}</div>` +
+      `<div class="wind-timeline-speed temp-timeline-value" style="${pillStyle}">${val != null ? Math.round(val) + "\u00B0" : "\u2014"}</div>` +
+      `</div>`;
+  }).join("");
+  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
+}
+
+// "Feels like" (apparent temperature) timeline row - same layout again, but
+// reuses TEMP_SCALE/tempColor() directly rather than a separate scale,
+// since apparent temperature is directly comparable to (and shares units
+// with) the plain air temperature shown by the Temperature row above it.
+function feelsLikeTimelineHtml(d, intervalHours, isPrint, nextDay) {
+  if (!d.feelsLikeHourly || !d.feelsLikeHourly.length) return missingDataCell(isPrint, d.weatherMissingReason);
+  const step = intervalHours || 2;
+  const hours = d.feelsLikeHourly.filter((h) => h.hour % step === 0);
+  const nextFirstHour = nextDay?.feelsLikeHourly?.find((h) => h.hour === 0);
+  const nextEdgeColor = nextFirstHour && nextFirstHour.feelsLike != null ? tempColor(nextFirstHour.feelsLike) : null;
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.feelsLike != null ? tempColor(h.feelsLike) : null, isPrint, nextEdgeColor);
+  const cells = hours.map((h) => {
+    const hh = String(h.hour).padStart(2, "0");
+    const leftPct = (h.hour / 24) * 100;
+    const val = h.feelsLike;
+    const color = val != null ? tempColor(val) : null;
+    const pillStyle = !isPrint && color ? `background-color:${color};color:${readableTextColor(color)}` : "";
+    return `<div class="wind-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
+      `<div class="wind-timeline-hour">${hh}</div>` +
+      `<div class="wind-timeline-speed temp-timeline-value" style="${pillStyle}">${val != null ? Math.round(val) + "\u00B0" : "\u2014"}</div>` +
+      `</div>`;
+  }).join("");
+  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
+}
+
 
 // make it immediately clear at a glance that this star rating is a
 // fishing-activity ("fishability") score rather than a generic moon-phase
@@ -3452,6 +3568,8 @@ const ROW_SHORT_ICONS = {
   currentTimeline: "\u{1F30A}\u{27A1}\u{FE0F}",
   tempTimeline: "\u{1F321}\u{FE0F}",
   humidityTimeline: "\u{1F4A7}", // water droplet
+  dewPointTimeline: "\u{1F4A6}", // droplets
+  feelsLikeTimeline: "\u{1F321}\u{FE0F}\u{2764}\u{FE0F}", // thermometer + heart ("feels like")
   sun: "\u{2600}\u{FE0F}",
   moon: "\u{1F319}",
 };
@@ -3550,6 +3668,16 @@ const ROW_DEFS = [
     key: "humidityTimeline", label: "Humidity", cellClass: "wind-timeline-cell-wrap", printDefault: false,
     labelSub: { screen: "(2h)", print: "(4h)" },
     render: (d, scales, isPrint, nextDay) => humidityTimelineHtml(d, isPrint ? 4 : 2, isPrint, nextDay),
+  },
+  {
+    key: "dewPointTimeline", label: "Dew Point", cellClass: "wind-timeline-cell-wrap", printDefault: false,
+    labelSub: { screen: "(2h)", print: "(4h)" },
+    render: (d, scales, isPrint, nextDay) => dewPointTimelineHtml(d, isPrint ? 4 : 2, isPrint, nextDay),
+  },
+  {
+    key: "feelsLikeTimeline", label: "Feels Like", cellClass: "wind-timeline-cell-wrap", printDefault: false,
+    labelSub: { screen: "(2h)", print: "(4h)" },
+    render: (d, scales, isPrint, nextDay) => feelsLikeTimelineHtml(d, isPrint ? 4 : 2, isPrint, nextDay),
   },
   {
     key: "pressure", label: "Pressure", printDefault: false,
