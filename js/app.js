@@ -201,7 +201,7 @@ function paintNorthCompass(container, offsetDeg, opts) {
 // larger compass + number input (the two are the same underlying setting,
 // just exposed in two places for convenience - see docs/ARCHITECTURE.md).
 function renderNorthCompassWidget() {
-  paintNorthCompass($("northCompassToggle"), northOffsetDeg, { size: 22, compact: true });
+  paintNorthCompass($("northCompassToggle"), northOffsetDeg, { size: 20, compact: true });
   for (const wrapId of ["northCompassSvgWrap", "northCompassSvgWrapSettings"]) {
     paintNorthCompass($(wrapId), northOffsetDeg, { size: 90, compact: false });
   }
