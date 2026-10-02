@@ -2499,6 +2499,8 @@ function updateNowHighlights() {
       label.textContent = `${fmtTime(now, tz)} \u00B7 ${height.toFixed(2)}m ${arrow} ${trendLabel}`;
       label.style.left = `${xPct.toFixed(2)}%`;
       label.classList.toggle("tide-now-label--flip", xPct > 70);
+      label.classList.toggle("tide-now-label--rising", trend === "rising");
+      label.classList.toggle("tide-now-label--falling", trend === "falling");
       label.style.display = "block";
     }
   });

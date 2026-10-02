@@ -744,6 +744,13 @@ tr.row-dragging .row-drag-handle { cursor: grabbing; opacity: 1; }
   display: none; z-index: 2;
 }
 .tide-now-label--flip { transform: translateX(calc(-100% - 4px)); }
+/* Rising/falling colour cue (see updateNowHighlights() in js/app.js,
+   which toggles these alongside --flip): falling keeps the same red as
+   the "now" line/dot, white text; rising switches to a bright green with
+   black text so the two states read as distinctly as the up/down arrow
+   glyph itself, at a glance. */
+.tide-now-label--falling { background: var(--now-accent, #d0392b); color: #fff; }
+.tide-now-label--rising { background: #39d353; color: #0a0a0a; }
 
 /* Current 2h/4h timeline highlight strip (screen only): a precisely
    `step`-hours-wide overlay behind a timeline row's cells, positioned/sized
