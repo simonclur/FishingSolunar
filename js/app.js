@@ -128,33 +128,70 @@ function saveNorthOffsetDeg(deg) {
 // widget) drops the "TOP"/"N" text labels, which are illegible at ~22px,
 // keeping just the ring/tick/needle shapes so the icon itself visibly
 // "shows" the configured setting at a glance.
+//
+// The needle is drawn as a classic two-tone compass-needle diamond (a
+// longer, pointed red half pointing at North + a shorter, blunter dark
+// half pointing the opposite way) rather than a single thin triangle -
+// much more legible/recognisable at the header icon's tiny ~22px size,
+// where a thin sliver was easy to miss entirely.
+//
+// The whole needle is wrapped in its own `<g class="north-compass-needle-
+// group">` positioned via a `transform="rotate(...)"` attribute, rather
+// than baking rotated coordinates into the polygon points directly - this
+// lets subsequent updates (see `updateNorthCompassRotation()` below) just
+// mutate that one attribute on the existing element instead of tearing
+// down and rebuilding the whole `<svg>` via `innerHTML` on every live-
+// tracking tick. Rebuilding the whole icon's DOM repeatedly turned out to
+// actively break mobile touch handling - replacing the exact element
+// mid-tap (between touchstart and the synthesized click) silently
+// cancels the click/tap gesture on at least some mobile browsers, which
+// is why the header compass button became unclickable once live
+// device-compass tracking was running.
 function northCompassSvg(offsetDeg, { size = 90, compact = false } = {}) {
   const cx = size / 2, cy = size / 2, ringR = size / 2 - (compact ? 3 : 7);
-  const rad = (offsetDeg - 90) * (Math.PI / 180); // -90 so 0deg points up
-  const needleTipX = cx + Math.cos(rad) * (ringR - (compact ? 1 : 6));
-  const needleTipY = cy + Math.sin(rad) * (ringR - (compact ? 1 : 6));
-  const perpRad = rad + Math.PI / 2;
-  const baseHalf = compact ? size * 0.055 : 5;
-  const baseX1 = cx + Math.cos(perpRad) * baseHalf;
-  const baseY1 = cy + Math.sin(perpRad) * baseHalf;
-  const baseX2 = cx - Math.cos(perpRad) * baseHalf;
-  const baseY2 = cy - Math.sin(perpRad) * baseHalf;
+  const tipLen = ringR - (compact ? 1 : 5);
+  const tailLen = tipLen * 0.55;
+  const baseHalf = compact ? size * 0.11 : size * 0.065;
   const tickLen = compact ? 3 : 8;
   const topTick = `<line x1="${cx}" y1="${cy - ringR}" x2="${cx}" y2="${cy - ringR + tickLen}" class="north-compass-top-tick"></line>`;
   const topLabel = compact ? "" : `<text x="${cx}" y="${cy - ringR + 18}" text-anchor="middle" class="north-compass-label">TOP</text>`;
-  let needleLabel = "";
-  if (!compact) {
-    const labelX = cx + Math.cos(rad) * (ringR - 16);
-    const labelY = cy + Math.sin(rad) * (ringR - 16);
-    needleLabel = `<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" dominant-baseline="central" class="north-compass-label">N</text>`;
-  }
+  const needleLabel = compact ? "" :
+    `<text x="0" y="${(-(ringR - 16)).toFixed(1)}" text-anchor="middle" dominant-baseline="central" class="north-compass-label">N</text>`;
   return `<svg class="north-compass-svg${compact ? " north-compass-svg-compact" : ""}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="North is ${Math.round(offsetDeg)} degrees clockwise from the top of this screen">` +
     `<circle cx="${cx}" cy="${cy}" r="${ringR}" class="north-compass-ring"></circle>` +
     topTick +
     topLabel +
-    `<polygon points="${needleTipX.toFixed(1)},${needleTipY.toFixed(1)} ${baseX1.toFixed(1)},${baseY1.toFixed(1)} ${cx},${cy} ${baseX2.toFixed(1)},${baseY2.toFixed(1)}" class="north-compass-needle"></polygon>` +
+    `<g class="north-compass-needle-group" transform="translate(${cx},${cy}) rotate(${offsetDeg.toFixed(1)})">` +
+    `<polygon points="0,${(-tipLen).toFixed(1)} ${baseHalf.toFixed(1)},0 ${(-baseHalf).toFixed(1)},0" class="north-compass-needle north-compass-needle-tip"></polygon>` +
+    `<polygon points="0,${tailLen.toFixed(1)} ${baseHalf.toFixed(1)},0 ${(-baseHalf).toFixed(1)},0" class="north-compass-needle north-compass-needle-tail"></polygon>` +
+    `<circle cx="0" cy="0" r="${(compact ? 1.5 : 2.5).toFixed(1)}" class="north-compass-needle-pivot"></circle>` +
     needleLabel +
+    `</g>` +
     `</svg>`;
+}
+
+// Cheap in-place update used once an icon/widget already has its SVG built
+// (see `renderNorthCompassWidget()` below) - just rotates the existing
+// needle `<g>` and refreshes the `aria-label`, without touching any other
+// DOM node (in particular, never recreating the element the user might be
+// mid-tap/mid-drag on).
+function updateNorthCompassRotation(svgEl, offsetDeg) {
+  const g = svgEl.querySelector(".north-compass-needle-group");
+  if (g) {
+    const [, tx, ty] = /translate\(([-\d.]+),([-\d.]+)\)/.exec(g.getAttribute("transform")) || [, 0, 0];
+    g.setAttribute("transform", `translate(${tx},${ty}) rotate(${offsetDeg.toFixed(1)})`);
+  }
+  svgEl.setAttribute("aria-label", `North is ${Math.round(offsetDeg)} degrees clockwise from the top of this screen`);
+}
+
+// Builds the SVG into `container` the first time (or if it's somehow been
+// emptied), otherwise just rotates the existing needle in place - see the
+// comment on `northCompassSvg()` above for why this matters on mobile.
+function paintNorthCompass(container, offsetDeg, opts) {
+  if (!container) return;
+  const existing = container.querySelector("svg.north-compass-svg");
+  if (existing) updateNorthCompassRotation(existing, offsetDeg);
+  else container.innerHTML = northCompassSvg(offsetDeg, opts);
 }
 
 // Keeps every on-screen reflection of `northOffsetDeg` in sync: the tiny
@@ -164,11 +201,9 @@ function northCompassSvg(offsetDeg, { size = 90, compact = false } = {}) {
 // larger compass + number input (the two are the same underlying setting,
 // just exposed in two places for convenience - see docs/ARCHITECTURE.md).
 function renderNorthCompassWidget() {
-  const btn = $("northCompassToggle");
-  if (btn) btn.innerHTML = northCompassSvg(northOffsetDeg, { size: 22, compact: true });
+  paintNorthCompass($("northCompassToggle"), northOffsetDeg, { size: 22, compact: true });
   for (const wrapId of ["northCompassSvgWrap", "northCompassSvgWrapSettings"]) {
-    const wrap = $(wrapId);
-    if (wrap) wrap.innerHTML = northCompassSvg(northOffsetDeg);
+    paintNorthCompass($(wrapId), northOffsetDeg, { size: 90, compact: false });
   }
   for (const inputId of ["northOffsetInput", "northOffsetInputSettings"]) {
     const input = $(inputId);

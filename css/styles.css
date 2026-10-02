@@ -209,7 +209,13 @@ body {
 }
 .north-compass-svg .north-compass-ring { fill: none; stroke: var(--ink); stroke-width: 1.5; }
 .north-compass-svg .north-compass-top-tick { stroke: var(--line); stroke-width: 2; }
-.north-compass-svg .north-compass-needle { fill: var(--warn); }
+/* Two-tone needle (see northCompassSvg() in js/app.js): a longer, pointed
+   red half pointing at North, a shorter/blunter dark half pointing the
+   opposite way - reads clearly as a compass needle even at the header
+   icon's tiny ~22px size, unlike the original single thin triangle. */
+.north-compass-svg .north-compass-needle-tip { fill: #d32f2f; }
+.north-compass-svg .north-compass-needle-tail { fill: var(--ink); }
+.north-compass-svg .north-compass-needle-pivot { fill: #fff; stroke: var(--ink); stroke-width: 1; }
 .north-compass-svg .north-compass-label { font-size: 9px; font-weight: 700; fill: var(--ink); }
 
 /* Top-of-page reminder banner, shown from 1 December each year until the
