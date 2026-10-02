@@ -286,7 +286,10 @@ function wireNorthCompassDial(wrapId) {
 // it's a single underlying listener, not two independent ones.
 let northLiveTracking = false;
 let northLiveTrackingLastWriteTs = 0;
+let northLiveTrackingGotData = false;
+let northLiveTrackingTimeoutId = null;
 const NORTH_LIVE_TRACKING_THROTTLE_MS = 200; // avoid thrashing localStorage/re-render on every sensor tick
+const NORTH_LIVE_TRACKING_NO_DATA_TIMEOUT_MS = 4000; // auto-stop if the device never reports a usable heading
 
 function setNorthCompassButtonsLabel(active) {
   for (const id of ["calibrateCompassBtn", "calibrateCompassBtnSettings"]) {
@@ -314,6 +317,11 @@ function onDeviceOrientationForCompass(e) {
   if (typeof e.webkitCompassHeading === "number") heading = e.webkitCompassHeading;
   else if (e.absolute && e.alpha != null) heading = (360 - e.alpha) % 360;
   if (heading == null) return;
+  northLiveTrackingGotData = true;
+  if (northLiveTrackingTimeoutId != null) {
+    clearTimeout(northLiveTrackingTimeoutId);
+    northLiveTrackingTimeoutId = null;
+  }
   const now = Date.now();
   if (now - northLiveTrackingLastWriteTs < NORTH_LIVE_TRACKING_THROTTLE_MS) return;
   northLiveTrackingLastWriteTs = now;
@@ -353,16 +361,32 @@ async function toggleNorthCompassLiveTracking() {
     }
   }
   northLiveTracking = true;
+  northLiveTrackingGotData = false;
   setNorthCompassButtonsLabel(true);
   setNorthCompassStatus("Live-tracking the device's compass \u2014 move/rotate the screen into its final mounted position, then tap \u201cStop live compass\u201d.");
   window.addEventListener("deviceorientationabsolute", onDeviceOrientationForCompass);
   window.addEventListener("deviceorientation", onDeviceOrientationForCompass);
+  // Some devices/browsers grant permission and fire the listener but
+  // never actually include a usable compass heading (no magnetometer, or
+  // it's a desktop/laptop) - without this, the button would say "Stop
+  // live compass" forever with nothing happening. Auto-stop and tell the
+  // user instead of leaving it silently stuck.
+  northLiveTrackingTimeoutId = setTimeout(() => {
+    northLiveTrackingTimeoutId = null;
+    if (!northLiveTracking || northLiveTrackingGotData) return;
+    stopNorthCompassLiveTracking();
+    setNorthCompassStatus("No compass data from this device/browser - set the number manually, or drag the dial, instead.");
+  }, NORTH_LIVE_TRACKING_NO_DATA_TIMEOUT_MS);
 }
 function stopNorthCompassLiveTracking() {
   northLiveTracking = false;
   setNorthCompassButtonsLabel(false);
   window.removeEventListener("deviceorientationabsolute", onDeviceOrientationForCompass);
   window.removeEventListener("deviceorientation", onDeviceOrientationForCompass);
+  if (northLiveTrackingTimeoutId != null) {
+    clearTimeout(northLiveTrackingTimeoutId);
+    northLiveTrackingTimeoutId = null;
+  }
 }
 
 // Set once by populatePresets() (see init()) so useGpsLocation() - a
