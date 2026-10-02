@@ -3583,10 +3583,10 @@ const ROW_DEFS = [
   { key: "tideLow", label: "Low tide", hasData: (d) => !d.tidesMissing, render: (d, scales, isPrint) => d.tidesMissing ? missingDataCell(isPrint, d.tidesMissingReason) : tideCell(d.tideLows, d.tz, d.sunrise, d.sunset, scales?.curveScale, "low", isPrint) },
   {
     key: "tideCurve", label: "Tide curve", cellClass: "tide-curve-cell",
-    labelIcon: () => `<span class="tide-ref-input-wrap no-print" title="Enter a critical tide height to plan a departure/return window">` +
+    labelIcon: () => `<span class="tide-ref-input-wrap no-print" title="Enter a critical tide height to plan a departure/return window">Traced height: ` +
       `<input type="number" step="0.1" min="0" max="10" id="refHeightInput" class="tide-ref-input" placeholder="m" value="${refTideHeight != null ? refTideHeight : ""}"></span>` +
       (refTideHeight != null && !isNaN(refTideHeight)
-        ? `<span class="tide-ref-print-label">Traced height: ${refTideHeight.toFixed(2)}m</span>`
+        ? `<span class="tide-ref-print-label print-only">Traced height: ${refTideHeight.toFixed(2)}m</span>`
         : ""),
     hasData: (d) => !d.tidesMissing,
     render: (d, scales, isPrint) => d.tidesMissing ? missingDataCell(isPrint, d.tidesMissingReason) : tideCurveSvg(d, scales?.curveScale, isPrint ? 4 : 2, isPrint),
@@ -3660,7 +3660,7 @@ const ROW_DEFS = [
       `${weatherIconsHtml(d.weatherCode)}<span class="temp-pill"${tempStyle(d.tempMax, isPrint)}>${d.tempMax?.toFixed(0) ?? "\u2014"}</span> / <span class="temp-pill"${tempStyle(d.tempMin, isPrint)}>${d.tempMin?.toFixed(0) ?? "\u2014"}</span>\u00B0C<br>${WMO_WEATHER[d.weatherCode] ?? "\u2014"}${d.uvIndexMax != null ? ` ${uvBadgeHtml(d.uvIndexMax)}` : ""}`,
   },
   {
-    key: "tempTimeline", label: "Temperature", cellClass: "wind-timeline-cell-wrap", printDefault: false,
+    key: "tempTimeline", label: "AirTemp", cellClass: "wind-timeline-cell-wrap", printDefault: false,
     labelSub: { screen: "(2h)", print: "(4h)" },
     render: (d, scales, isPrint, nextDay) => tempTimelineHtml(d, isPrint ? 4 : 2, isPrint, nextDay),
   },

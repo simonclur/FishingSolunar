@@ -14,7 +14,7 @@ every API used must support CORS for browser `fetch()` calls.
 - Also fetched hourly: `windspeed_10m`, `winddirection_10m` (used for the
   Wind (2h)/(4h) timeline row), `pressure_msl` (used for the screen-only
   Pressure row, averaged 6am–6pm per day like sea temp/current below),
-  `temperature_2m` (used for the Temperature (2h)/(4h) timeline row),
+  `temperature_2m` (used for the AirTemp (2h)/(4h) timeline row),
   `relative_humidity_2m` (used for the Humidity (2h)/(4h) timeline row),
   `dewpoint_2m` (used for the Dew Point (2h)/(4h) timeline row),
   `apparent_temperature` (used for the Feels Like (2h)/(4h) timeline row)

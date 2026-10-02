@@ -638,18 +638,23 @@ tr.row-dragging .row-drag-handle { cursor: grabbing; opacity: 1; }
    crosses that height - drawn on BOTH screen and print (unlike the
    mouse-hover readout below), since it's an explicit planning aid the
    user wants visible on the laminated printout too. */
-.tide-ref-input-wrap { display: inline-flex; align-items: center; margin-left: 0.35rem; }
+.tide-ref-input-wrap { display: block; align-items: center; margin-top: 0.15rem; font-weight: 700; font-size: 0.7rem; }
 .tide-ref-input {
   width: 3.4rem; font: inherit; font-size: 0.75rem; padding: 0.05rem 0.3rem;
   border: 1px solid var(--line); border-radius: 0.25rem; background: var(--surface); color: var(--ink);
+  margin-left: 0.3rem;
 }
-/* Printable readout of the same value shown in `#refHeightInput` above -
+/* Printable readout of the same value entered via `#refHeightInput` above -
    the input itself is `.no-print` (a live number input can't render on
    paper), so this plain-text label is what actually appears on the
-   laminated sheet. Forced onto its own line under the "Tide curve" title
-   (rather than inline like the input) via `display: block`, so it reads
-   as a caption rather than crowding the row title. */
+   laminated sheet instead. Forced onto its own line under the "Tide curve"
+   title (rather than inline) via `display: block`, so it reads as a
+   caption rather than crowding the row title. */
 .tide-ref-print-label { display: block; font-weight: 700; font-size: 0.7rem; margin-top: 0.15rem; }
+/* `.print-only`'s `display: none` has equal specificity to the rule above
+   and loses to it by source order, so needs this more specific override to
+   actually hide the static text on screen (the live input replaces it there). */
+.tide-ref-print-label.print-only { display: none; }
 .tide-ref-line {
   position: absolute; left: 0; right: 0; height: 0; border-top: 1.5px dotted #c0392b;
   pointer-events: none; z-index: 1;

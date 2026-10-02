@@ -1129,7 +1129,7 @@ in `buildPlan()`.
 
 ## Rain and Temperature timeline rows
 
-- **Rain (2h)/(4h)** (`rainTimelineHtml()`) and **Temperature (2h)/(4h)**
+- **Rain (2h)/(4h)** (`rainTimelineHtml()`) and **AirTemp (2h)/(4h)**
   (`tempTimelineHtml()`) reuse the exact same layout/interval machinery as
   the Wind/Current/Wave timeline rows above (`.wind-timeline`/
   `.wind-timeline-cell`, `timelineWrapAttrs()`, `timelineGradientBgStrips()`
@@ -1184,7 +1184,7 @@ in `buildPlan()`.
 **Temperature colour-scale rebalance + new Sea-temp colour scale (2026-10)**:
 reviewed both rows' colouring against standard weather-reporting colour
 conventions, prompted by `TEMP_SCALE` (air temp, used by both the daily
-Weather row's max/min pills and the Temperature (2h)/(4h) timeline) being
+Weather row's max/min pills and the AirTemp (2h)/(4h) timeline) being
 too coarse for this app's actual locations — it had only 8 bands spanning
 -10C to 40C+, with single bands covering all of 10-20C (green) and all of
 20-30C (gold). Since this app's Australian sub-tropical locations mostly
