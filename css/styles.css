@@ -225,30 +225,22 @@ body {
 .north-compass-toggle .north-compass-svg-compact .north-compass-ring { stroke-width: 1; }
 .north-compass-toggle .north-compass-svg-compact .north-compass-top-tick { stroke-width: 1.25; }
 .app-footer {
-  /* Previously an in-flow block after #plannerRoot - but #plannerRoot's
-     .table-scroll (see below) already fills/scrolls the whole remaining
-     viewport internally, so this never actually became reachable via a
-     normal page scroll; it either sat permanently off-screen or forced a
-     confusing second/outer page scroll on top of the table's own one.
-     Now a fixed overlay, hidden by default and slid into view only once
-     the table is scrolled to its own bottom (see wireFooterReveal() in
-     js/app.js), and slid back out as soon as the user scrolls back up -
-     keeps the data-sources note reachable without permanently costing
-     any vertical space or needing that extra outer scroll. */
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 15;
+  /* Lives *inside* `.table-scroll` (appended as the table's last child by
+     render() - see the `screenWrap.appendChild(footerEl)` call) rather than
+     after #plannerRoot in the document, so it scrolls as part of the same
+     content the table rows do: reachable by scrolling the table area all
+     the way down, sitting below the last row rather than fixed/overlaid on
+     top of it (a fixed-overlay version was tried first, but it popped up
+     over the last few rows of data instead of acting like a true page
+     bottom - see git history). Plain in-flow block, no position/transform
+     trickery needed. */
+  display: block;
   background: var(--bg);
   padding: 0.6rem 1rem;
   font-size: 0.75rem;
   color: var(--line);
   border-top: 1px solid var(--line-light);
-  transform: translateY(100%);
-  transition: transform 0.25s ease;
 }
-.app-footer--visible { transform: translateY(0); }
 .app-footer a { color: var(--accent); }
 
 /* ---------- settings panel ---------- */

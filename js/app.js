@@ -3925,24 +3925,19 @@ function snapToNearestDay(container) {
   }
 }
 
-// Reveals the data-sources footer (see .app-footer in css/styles.css,
-// now a fixed bottom overlay hidden by default) only once `container`
-// (the table's own internal scroll area, .table-scroll - see its CSS
-// comment for why this can't just be a normal in-flow footer) is
-// scrolled to its own bottom, and hides it again as soon as the user
-// scrolls back up. Also checked once immediately after wiring, so a
-// short table that doesn't need scrolling at all (already "at the
-// bottom" with nothing left to scroll) still shows the footer.
-function wireFooterReveal(container) {
-  const FOOTER_REVEAL_THRESHOLD_PX = 16;
+// Moves the data-sources footer (see .app-footer in css/styles.css) to be
+// the last child of `container` (the table's own internal scroll area,
+// .table-scroll) so it scrolls as part of the same content as the table
+// rows - sitting in-flow below the last row, reachable only by scrolling
+// the table all the way down, rather than ever overlaying data rows (a
+// fixed-overlay "slide up on scroll-to-bottom" version was tried first,
+// but it popped up over the last few rows instead of acting like a true
+// page bottom). `appendChild` on an already-attached node moves rather
+// than clones it, so this is safe to call every render() even though the
+// footer itself is only ever created once in index.html.
+function moveFooterIntoScrollArea(container) {
   const footer = document.querySelector(".app-footer");
-  if (!footer) return;
-  const check = () => {
-    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= FOOTER_REVEAL_THRESHOLD_PX;
-    footer.classList.toggle("app-footer--visible", nearBottom);
-  };
-  container.addEventListener("scroll", check, { passive: true });
-  check();
+  if (footer) container.appendChild(footer);
 }
 
 // Waits for horizontal scrolling to settle (debounced, since a swipe or
@@ -4062,7 +4057,7 @@ function render(days, settings, tideMeta) {
   });
   wireScrollAxisLock(screenWrap);
   wireDaySnap(screenWrap);
-  wireFooterReveal(screenWrap);
+  moveFooterIntoScrollArea(screenWrap);
   updateNowHighlights();
 
   // --- print-only tables, 7 days per A4 landscape page ---
