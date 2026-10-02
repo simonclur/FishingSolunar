@@ -7,14 +7,84 @@
 */
 
 :root {
+  color-scheme: light;
   --ink: #111111;
   --line: #333333;
   --line-light: #888888;
   --bg: #ffffff;
   --bg-alt: #f2f2f2;
   --accent: #0b4f8a; /* dark blue - reads fine in greyscale */
+  --accent-contrast: #ffffff; /* text colour placed ON TOP of --accent */
   --warn: #8a1c1c; /* dark red - reads fine in greyscale */
+  --warn-bg-subtle: #fff6f6; /* pale wash behind warning banners */
+  --border: #111111; /* generic "strong" border colour (was var(--ink) inline everywhere) */
+  --surface: #ffffff; /* opaque card/popover/button background, distinct from page --bg */
+  --hover-overlay: rgba(0, 0, 0, 0.06);
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --tooltip-bg: #111111;
+  --tooltip-fg: #ffffff;
+  --btn-primary-bg: var(--ink);
+  --btn-primary-fg: #ffffff;
+  --btn-secondary-bg: #ffffff;
+  --btn-secondary-fg: var(--ink);
+  --value-high: #b3261e;
+  --value-med: #b05a00;
+  --value-cold: #0b4f8a;
+  --tide-high-color: #0b4f8a;
+  --tide-low-color: #4a90c4;
+  --tide-low-dot: #6fb1e0;
+  --body-bg-image: none;
   font-size: 16px;
+}
+
+/* Dark theme: applied by JS (see applyTheme() in js/app.js) which sets
+   data-theme="dark"|"light" on <html> based on the Settings "Theme"
+   choice (System/Light/Dark), defaulting to the OS/browser's own
+   prefers-color-scheme the first time a user opens the app. Deliberately
+   NOT a `@media (prefers-color-scheme: dark)` block here - resolving it
+   in JS instead lets the explicit Settings choice override the OS level,
+   and lets "System" keep following OS changes live (see the matchMedia
+   listener in js/app.js) without duplicating this whole block under a
+   media query too.
+   Colour choices lean into a "night sea/weather" feel (deep navy page
+   background + a soft fixed wave-crest backdrop image - see body below)
+   rather than a flat grey, while keeping enough contrast for the dense
+   data table to stay easily readable. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #e8edf2;
+  --line: #aebdcc;
+  --line-light: #4c637a;
+  --bg: #0b1f33;
+  --bg-alt: #0f2a44;
+  --accent: #4fc3f7;
+  --accent-contrast: #052033;
+  --warn: #ff6b6b;
+  --warn-bg-subtle: #3a1414;
+  --border: #3c5a74;
+  --surface: #12324e;
+  --hover-overlay: rgba(255, 255, 255, 0.1);
+  --shadow-color: rgba(0, 0, 0, 0.6);
+  --tooltip-bg: #0a1826;
+  --tooltip-fg: #e8edf2;
+  --btn-primary-bg: var(--accent);
+  --btn-primary-fg: #052033;
+  --btn-secondary-bg: var(--surface);
+  --btn-secondary-fg: var(--ink);
+  --value-high: #ff8a80;
+  --value-med: #ffb74d;
+  --value-cold: #64b5f6;
+  --tide-high-color: #4fc3f7;
+  --tide-low-color: #81d4fa;
+  --tide-low-dot: #4fa8d8;
+  /* Subtle fixed wave-crest silhouette + a faint moon glow, layered over
+     a deep-navy-to-teal gradient "night sea" - low-contrast/low-opacity
+     by design so it reads as ambience behind the header/footer/table
+     rather than competing with the data itself. */
+  --body-bg-image:
+    radial-gradient(ellipse 60% 40% at 85% 8%, rgba(207, 226, 255, 0.16), transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='300' viewBox='0 0 600 300'%3E%3Cpath d='M0 210 Q75 180 150 210 T300 210 T450 210 T600 210 V300 H0 Z' fill='%23123450' opacity='0.55'/%3E%3Cpath d='M0 250 Q75 225 150 250 T300 250 T450 250 T600 250 V300 H0 Z' fill='%230e2b45' opacity='0.7'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, #081627 0%, #0b1f33 55%, #0d2742 100%);
 }
 
 * { box-sizing: border-box; }
@@ -24,7 +94,13 @@ body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   color: var(--ink);
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--body-bg-image);
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-position: top, bottom center, top;
+  background-size: auto, 100% auto, 100% 100%;
+  background-attachment: fixed, fixed, fixed;
+  transition: background-color 0.2s ease, color 0.2s ease;
   /* Full-height flex column: header/settings/warning banners size
      naturally, and #plannerRoot (below) takes up whatever's left, so the
      table-scroll's own scroll area is always exactly "the rest of the
@@ -49,7 +125,7 @@ body {
   flex-wrap: wrap;
   row-gap: 0.3rem;
   padding: 0.6rem 1rem;
-  border-bottom: 2px solid var(--ink);
+  border-bottom: 2px solid var(--border);
 }
 .app-header h1 {
   font-size: 1.1rem;
@@ -110,7 +186,7 @@ body {
 .icon-btn {
   font-size: 1.3rem;
   background: none;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.25rem 0.6rem;
   cursor: pointer;
@@ -134,7 +210,7 @@ body {
 
 .settings-panel {
   padding: 0.75rem 1rem;
-  border-bottom: 2px solid var(--ink);
+  border-bottom: 2px solid var(--border);
   background: var(--bg-alt);
 }
 .field { display: flex; flex-direction: column; margin-bottom: 0.6rem; }
@@ -143,8 +219,10 @@ body {
 .field input, .field select {
   padding: 0.4rem;
   font-size: 1rem;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--border);
   border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
 }
 .field-row { display: flex; gap: 0.75rem; }
 .field-row .field { flex: 1; }
@@ -159,12 +237,12 @@ body {
   padding: 0.5rem 1rem;
   font-size: 0.95rem;
   border-radius: 6px;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--border);
   cursor: pointer;
 }
-.primary-btn { background: var(--ink); color: #fff; }
-.secondary-btn { background: #fff; color: var(--ink); }
-.secondary-btn.gps-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.primary-btn { background: var(--btn-primary-bg); color: var(--btn-primary-fg); }
+.secondary-btn { background: var(--btn-secondary-bg); color: var(--btn-secondary-fg); }
+.secondary-btn.gps-active { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
 .status-msg { font-size: 0.85rem; margin-top: 0.4rem; }
 .status-msg.error { color: var(--warn); font-weight: 600; }
 .tide-source-note { font-size: 0.8rem; margin: 0.2rem 0 0.4rem; color: var(--line); }
@@ -181,7 +259,7 @@ body {
    where they're standing - it never rotates anything else on the page. */
 .north-compass-panel {
   padding: 0.75rem 1rem;
-  border-bottom: 2px solid var(--ink);
+  border-bottom: 2px solid var(--border);
   background: var(--bg-alt);
 }
 .north-compass-body {
@@ -203,8 +281,10 @@ body {
   width: 5rem;
   padding: 0.4rem;
   font-size: 1rem;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--border);
   border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
 }
 .north-compass-svg .north-compass-ring { fill: none; stroke: var(--ink); stroke-width: 1.5; }
 .north-compass-svg .north-compass-top-tick { stroke: var(--line); stroke-width: 2; }
@@ -214,7 +294,7 @@ body {
    icon's tiny ~22px size, unlike the original single thin triangle. */
 .north-compass-svg .north-compass-needle-tip { fill: #d32f2f; }
 .north-compass-svg .north-compass-needle-tail { fill: var(--ink); }
-.north-compass-svg .north-compass-needle-pivot { fill: #fff; stroke: var(--ink); stroke-width: 1; }
+.north-compass-svg .north-compass-needle-pivot { fill: var(--surface); stroke: var(--ink); stroke-width: 1; }
 .north-compass-svg .north-compass-label { font-size: 9px; font-weight: 700; fill: var(--ink); }
 
 /* Top-of-page reminder banner, shown from 1 December each year until the
@@ -227,7 +307,7 @@ body {
   margin: 0 0 0.6rem;
   padding: 0.5rem 1rem;
   border-bottom: 2px solid var(--warn);
-  background: #fff6f6;
+  background: var(--warn-bg-subtle);
   color: var(--warn);
   font-weight: 600;
   font-size: 0.85rem;
@@ -248,14 +328,14 @@ body {
   padding: 0.15rem 0.3rem;
 }
 .data-missing-btn:hover, .data-missing-btn:focus-visible {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--hover-overlay);
   border-radius: 4px;
 }
 .data-missing-popover {
   position: fixed;
   z-index: 30;
   max-width: min(80vw, 22rem);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   border: 2px solid var(--warn);
   border-radius: 6px;
@@ -263,7 +343,7 @@ body {
   font-size: 0.85rem;
   font-weight: 600;
   line-height: 1.3;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px var(--shadow-color);
 }
 
 /* small fixed badge, bottom-right, shown only when displaying data that
@@ -273,8 +353,8 @@ body {
   right: 0.75rem;
   bottom: 0.75rem;
   z-index: 20;
-  background: #fff;
-  border: 2px solid var(--ink);
+  background: var(--surface);
+  border: 2px solid var(--border);
   color: var(--ink);
   border-radius: 6px;
   padding: 0.4rem 0.65rem;
@@ -350,9 +430,9 @@ table.planner-table {
   position: sticky;
   top: 0;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
   z-index: 3;
-  border-bottom: 2px solid var(--ink);
+  border-bottom: 2px solid var(--border);
 }
 .planner-table .row-label-col {
   position: sticky;
@@ -362,7 +442,7 @@ table.planner-table {
   text-align: left;
   font-weight: 600;
   white-space: nowrap;
-  border-right: 2px solid var(--ink);
+  border-right: 2px solid var(--border);
   cursor: pointer;
 }
 .planner-table thead th.row-label-col { z-index: 4; cursor: default; }
@@ -383,7 +463,7 @@ table.planner-table {
 .row-label-icon { width: 1.15em; height: 0.66em; vertical-align: -0.05em; overflow: visible; }
 .fish-body { fill: #1f6fb2; stroke: none; }
 .fish-tail { fill: #1f6fb2; stroke: none; }
-.fish-eye { fill: #fff; stroke: none; }
+.fish-eye { fill: var(--surface); stroke: none; }
 
 /* Collapsed row-label glyphs (Wind/Wind timeline, Waves/Swell, Wave
    energy) - small SVG icons rather than emoji, styled to echo the common
@@ -405,10 +485,10 @@ table.planner-table {
 
 .planner-table .dow { font-weight: 800; font-size: 1.05em; }
 .planner-table .daymonth { font-weight: 700; color: var(--ink); }
-.planner-table thead .daymonth { color: #fff; }
+.planner-table thead .daymonth { color: var(--accent-contrast); }
 .planner-table thead th:not(.row-label-col) {
   padding-bottom: 0.5rem;
-  border-bottom: 3px solid var(--ink);
+  border-bottom: 3px solid var(--border);
 }
 .stars { letter-spacing: 1px; }
 .muted { color: var(--line); font-size: 0.8em; }
@@ -419,9 +499,9 @@ table.planner-table {
    rain chance, hot/cold temps, extreme tide highs/lows) so they can be
    spotted at a glance. Always overridden back to plain black in print
    (see @media print section) to keep the laminated sheet B&W-safe. */
-.value-high { color: #b3261e; font-weight: 700; }
-.value-med { color: #b05a00; font-weight: 600; }
-.value-cold { color: #0b4f8a; font-weight: 700; }
+.value-high { color: var(--value-high); font-weight: 700; }
+.value-med { color: var(--value-med); font-weight: 600; }
+.value-cold { color: var(--value-cold); font-weight: 700; }
 
 .tide-entry { display: flex; align-items: baseline; gap: 0.4rem; }
 .tide-entry--left { justify-content: flex-start; padding-left: 8%; }
@@ -455,16 +535,16 @@ table.planner-table {
   position: absolute; width: 4px; height: 4px; margin: -2px 0 0 -2px;
   border-radius: 50%; background: var(--ink); pointer-events: none;
 }
-.tide-marker-dot--high { background: #0b4f8a; } /* deeper blue for high tide peaks */
-.tide-marker-dot--low { background: #6fb1e0; } /* lighter blue for low tide troughs */
+.tide-marker-dot--high { background: var(--tide-high-color); } /* deeper blue for high tide peaks */
+.tide-marker-dot--low { background: var(--tide-low-dot); } /* lighter blue for low tide troughs */
 .tide-marker-label {
   position: absolute; font-size: 7.5px; color: var(--ink); font-weight: 700;
   white-space: nowrap; pointer-events: none;
   display: flex; flex-direction: column; align-items: center; line-height: 1.15;
 }
 .tide-marker-label-line { white-space: nowrap; }
-.tide-marker-label--high { color: #0b4f8a; }
-.tide-marker-label--low { color: #4a90c4; }
+.tide-marker-label--high { color: var(--tide-high-color); }
+.tide-marker-label--low { color: var(--tide-low-color); }
 .tide-night { fill: var(--ink); opacity: 0.06; }
 /* King-tide zone: a subtle red tint over the portion of each day's curve
    that pokes above/below this station's own usual high/low range (top
@@ -489,7 +569,7 @@ table.planner-table {
 .tide-ref-input-wrap { display: inline-flex; align-items: center; margin-left: 0.35rem; }
 .tide-ref-input {
   width: 3.4rem; font: inherit; font-size: 0.75rem; padding: 0.05rem 0.3rem;
-  border: 1px solid var(--line); border-radius: 0.25rem; background: #fff; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 0.25rem; background: var(--surface); color: var(--ink);
 }
 /* Printable readout of the same value shown in `#refHeightInput` above -
    the input itself is `.no-print` (a live number input can't render on
@@ -572,12 +652,12 @@ table.planner-table {
 }
 .tide-hover-dot {
   position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px;
-  border-radius: 50%; background: var(--accent); border: 1px solid #fff;
+  border-radius: 50%; background: var(--accent); border: 1px solid var(--bg);
   box-shadow: 0 0 0 1px var(--accent); pointer-events: none; display: none;
 }
 .tide-hover-tooltip {
   position: absolute; transform: translate(4px, -130%); white-space: nowrap;
-  background: var(--ink); color: #fff; font-size: 0.68rem; font-weight: 600;
+  background: var(--tooltip-bg); color: var(--tooltip-fg); font-size: 0.68rem; font-weight: 600;
   padding: 0.15rem 0.4rem; border-radius: 0.3rem; pointer-events: none;
   display: none; z-index: 2;
 }
@@ -601,7 +681,7 @@ table.planner-table {
 }
 .tide-now-dot {
   position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
-  border-radius: 50%; background: var(--now-accent, #d0392b); border: 1px solid #fff;
+  border-radius: 50%; background: var(--now-accent, #d0392b); border: 1px solid var(--bg);
   box-shadow: 0 0 0 1px var(--now-accent, #d0392b); pointer-events: none; display: none; z-index: 2;
 }
 .tide-now-label {
@@ -656,13 +736,13 @@ table.planner-table {
 
 /* wind direction/strength icon: compass rose + tapered wind barb */
 .wind-icon-svg { width: 40px; height: 40px; display: block; margin: 0 auto 0.15rem; vertical-align: middle; overflow: visible; }
-.wind-ring { fill: #fff; stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.wind-ring { fill: var(--surface); stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .wind-tick-label { font-size: 6.5px; fill: var(--line); font-weight: 700; }
 .wind-barb { stroke: none; }
 .wind-barb-max { fill: var(--ink); }
 .wind-barb-gust { fill: none; stroke: var(--ink); stroke-width: 1.1; stroke-dasharray: 2 1.5; vector-effect: non-scaling-stroke; }
-.wind-barb-avg { fill: none; stroke: #fff; stroke-width: 1.3; vector-effect: non-scaling-stroke; }
-.wind-speed-label { font-size: 9.5px; fill: var(--ink); font-weight: 700; paint-order: stroke fill; stroke: #fff; stroke-width: 3px; }
+.wind-barb-avg { fill: none; stroke: var(--surface); stroke-width: 1.3; vector-effect: non-scaling-stroke; }
+.wind-speed-label { font-size: 9.5px; fill: var(--ink); font-weight: 700; paint-order: stroke fill; stroke: var(--surface); stroke-width: 3px; }
 .wind-cell { text-align: center; }
 .wind-cell-row { display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
 .wind-stats { display: flex; flex-direction: column; gap: 0.05rem; align-items: flex-start; }
@@ -718,7 +798,7 @@ table.planner-table {
 }
 .wind-barb-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; }
 .wind-barb-mini { fill: var(--ink); stroke: none; }
-.wind-barb-mini-outline { stroke: #fff; stroke-width: 0.8; paint-order: stroke fill; }
+.wind-barb-mini-outline { stroke: var(--bg); stroke-width: 0.8; paint-order: stroke fill; }
 .current-arrow-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; position: relative; z-index: 1; }
 .current-arrow-mini { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 
@@ -748,7 +828,7 @@ table.planner-table {
 .wave-timeline-barbg {
   position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
   width: 10px; height: 16px; display: flex; align-items: flex-end;
-  background: rgba(0, 0, 0, 0.06); border-radius: 1px; overflow: hidden;
+  background: var(--hover-overlay); border-radius: 1px; overflow: hidden;
 }
 .wave-timeline-barbg-fill { width: 100%; }
 

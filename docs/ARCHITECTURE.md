@@ -1278,3 +1278,50 @@ opening either panel.
    override should always win.
 
 
+
+## Dark/light theme (2026-10)
+
+A "Theme" setting (System/Light/Dark, default System) was added:
+
+- **CSS**: `css/styles.css`'s `:root` defines the light-theme palette as
+  before, now expressed through a larger set of semantic variables
+  (`--border`, `--surface`, `--btn-primary-bg`/`-fg`,
+  `--btn-secondary-bg`/`-fg`, `--tooltip-bg`/`-fg`, `--value-high`/`-med`/
+  `-cold`, `--tide-high-color`/`--tide-low-color`/`--tide-low-dot`,
+  `--hover-overlay`, `--shadow-color`, `--warn-bg-subtle`,
+  `--accent-contrast`, `--body-bg-image`) instead of a handful of raw hex
+  literals sprinkled through the stylesheet (many of which used to be
+  hardcoded `#fff`/`var(--ink)` assuming a white page). An
+  `html[data-theme="dark"]` block overrides all of these with a "night
+  sea" palette (deep navy `--bg`, bright cyan `--accent`, soft coral
+  `--warn`, etc.) plus a layered `--body-bg-image` (a radial moon-glow +
+  a faint SVG wave-crest silhouette + a navy-to-teal gradient) applied to
+  `body`'s `background-image`. `color-scheme: light`/`dark` is also set so
+  native form controls (checkboxes, date pickers, scrollbars) follow
+  suit. `@media print` is untouched and still forces plain black-on-white
+  regardless of the active theme - dark mode is screen-only.
+- **JS** (`js/app.js`, near the top, "dark/light theme" section):
+  `getThemePreference()` reads `localStorage["fishingSolunar.theme"]`
+  ("system" default, or an explicit "light"/"dark"); `resolveTheme()`
+  turns "system" into a concrete value via
+  `matchMedia("(prefers-color-scheme: dark)")`; `applyTheme()` sets
+  `data-theme` on `<html>`; `setThemePreference()` persists + re-applies.
+  A `change` listener on the media query keeps a "System" choice
+  following the OS/browser live (e.g. a kiosk tablet left open overnight
+  that auto-switches at sunset) without needing a reload.
+- **No-flash-of-wrong-theme**: `index.html`'s `<head>` has a small inline
+  `<script>` (before the stylesheet `<link>`) that re-implements just
+  enough of the same localStorage/matchMedia logic to set `data-theme`
+  synchronously before first paint - `js/app.js` itself is loaded at the
+  end of `<body>` and would otherwise apply the theme visibly late.
+- **Settings UI**: a new "Theme" field (`#themeSelect`) at the top of
+  `#settingsForm`, wired in `init()` to `getThemePreference()`/
+  `setThemePreference()`.
+- Every hardcoded screen-only `#fff`/raw hex background, border, or text
+  colour that assumed a white page was swapped for one of the variables
+  above (buttons, popovers, tooltips, the stale-data badge, tide
+  markers/king-zone colours, wind-icon ring/outline strokes, table header
+  text, the compass needle pivot, etc.) - decorative/already-saturated
+  icon colours (sun/cloud/rain icons, fish icon, wave-swirl icons, moon
+  phase) were deliberately left as-is, since bright weather-icon colours
+  on a dark background is the normal/desired look for this feature.

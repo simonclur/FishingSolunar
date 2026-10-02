@@ -6,6 +6,24 @@
 <title>FishingSolunar &mdash; Tide, Swell &amp; Solunar Planner</title>
 <link rel="stylesheet" href="css/styles.css" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%A3%3C/text%3E%3C/svg%3E" />
+<script>
+// Applies the saved/OS dark-mode preference before first paint, so there's
+// no flash of the wrong theme while js/app.js (loaded at the end of
+// <body>) is still parsing. Deliberately tiny/standalone - duplicates
+// just enough of getThemePreference()/resolveTheme() from js/app.js
+// (localStorage key "fishingSolunar.theme": "system" (default) | "light"
+// | "dark") rather than depending on that file, since it has to run here,
+// synchronously, before the browser applies the compiled stylesheet
+// below to the still-loading page.
+(function () {
+  try {
+    var pref = localStorage.getItem("fishingSolunar.theme");
+    var theme = (pref === "light" || pref === "dark") ? pref :
+      (matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  } catch (e) { /* localStorage/matchMedia unavailable - fall back to the CSS default (light) */ }
+})();
+</script>
 </head>
 <body>
 
@@ -48,6 +66,15 @@
 
 <section id="settingsPanel" class="settings-panel no-print" hidden>
   <form id="settingsForm">
+    <div class="field">
+      <label for="themeSelect">Theme</label>
+      <select id="themeSelect">
+        <option value="system">Match system/browser setting</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+      <span class="hint">Dark mode uses a night-sky/sea look; doesn't affect what gets printed.</span>
+    </div>
     <div class="field">
       <label for="regionFilter">Region</label>
       <select id="regionFilter">

@@ -22,6 +22,7 @@ const LS_KEYS = {
   printRows: "fishingSolunar.printRows",
   screenRows: "fishingSolunar.screenRows",
   northOffset: "fishingSolunar.northOffsetDeg",
+  theme: "fishingSolunar.theme", // "system" | "light" | "dark"
 };
 
 // Which rows the user wants included on the printed/laminated sheet -
@@ -95,6 +96,39 @@ let refTideHeight = (() => {
 // the underlying `days` data doesn't change, only the overlay drawn on top
 // of it) rather than re-running the whole `refresh()` fetch pipeline.
 let lastRenderArgs = null;
+
+// ---------- dark/light theme ----------
+// Resolves to an actual "light"/"dark" value and applies it by setting
+// data-theme on <html> (see the html[data-theme="dark"] variable overrides
+// in css/styles.css) - this runs here (in addition to the inline
+// no-flash-of-wrong-theme snippet in index.html's <head>, which only has
+// access to localStorage, not this module) so later calls (e.g. the
+// Settings "Theme" selector, or the OS theme changing live while
+// "System" is selected) can update it without a full page reload.
+const THEME_MEDIA_QUERY = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
+function getThemePreference() {
+  const raw = localStorage.getItem(LS_KEYS.theme);
+  return raw === "light" || raw === "dark" ? raw : "system";
+}
+function resolveTheme(pref) {
+  if (pref === "light" || pref === "dark") return pref;
+  return THEME_MEDIA_QUERY && THEME_MEDIA_QUERY.matches ? "dark" : "light";
+}
+function applyTheme(pref) {
+  document.documentElement.setAttribute("data-theme", resolveTheme(pref));
+}
+function setThemePreference(pref) {
+  localStorage.setItem(LS_KEYS.theme, pref);
+  applyTheme(pref);
+}
+// Keep following the OS/browser setting live whenever "System" is the
+// active choice - e.g. a kiosk tablet left open overnight whose OS
+// auto-switches to dark mode at sunset shouldn't need a manual reload.
+if (THEME_MEDIA_QUERY) {
+  THEME_MEDIA_QUERY.addEventListener("change", () => {
+    if (getThemePreference() === "system") applyTheme("system");
+  });
+}
 
 // Orientation-compass helper (see #northCompassPanel in index.html) - a
 // purely informational reference, completely separate from every other
@@ -4178,6 +4212,13 @@ function init() {
   wireNorthCompassControls("northOffsetInputSettings", "calibrateCompassBtnSettings", "resetCompassBtnSettings", "compassCalibrateStatusSettings");
   wireNorthCompassDial("northCompassSvgWrap");
   wireNorthCompassDial("northCompassSvgWrapSettings");
+
+  // Theme (see applyTheme()/setThemePreference() above) - already applied
+  // once before this point (by the inline <head> snippet in index.html,
+  // for no-flash-of-wrong-theme on load), this just syncs the Settings
+  // dropdown to reflect the current choice and wires it up for changes.
+  $("themeSelect").value = getThemePreference();
+  $("themeSelect").addEventListener("change", () => setThemePreference($("themeSelect").value));
 
   $("printBtn").addEventListener("click", () => window.print());
   $("forceRefreshBtn").addEventListener("click", forceRefresh);
