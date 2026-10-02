@@ -1864,29 +1864,54 @@ function rainChanceClass(pct) {
   return "";
 }
 
-// Air-temperature colour scale (deep violet = extreme cold -> magenta =
-// dangerous heat), following the standard meteorological "cold blue -> hot
-// red" map convention (e.g. BOM/weather.com temperature outlook maps).
-// Earlier revisions used only 8 wide bands (e.g. a single "green" covering
-// all of 10-20C and a single "gold" covering all of 20-30C) which, for this
-// app's sub-tropical Australian locations where daily temps mostly sit
-// 15-35C, meant most real-world values collapsed into just two colours.
-// Rebalanced to finer ~3-5C steps across that common range (keeping wide,
-// coarse bands only at the rare extremes) so the colour is actually useful
-// for at-a-glance comparison between days, not just a decoration.
+// Air-temperature colour scale - matches the common scientific/meteorological
+// "temperature in Celsius" colour-label convention (e.g. the 2C-banded
+// purple/blue -> mint -> yellow/orange -> deep-red/maroon ramp used in
+// climate figures such as https://www.researchgate.net/figure/Temperature-in-Celsius-and-the-corresponding-color-label_fig1_340081408),
+// rather than this app's earlier, more pastel custom palette. Colours below
+// were sampled directly from that reference figure's 2C bands (-30C to
+// 40C+) so the ramp is vivid/saturated rather than washed-out, and reads
+// consistently with how most people already associate colour with
+// temperature from weather maps.
 const TEMP_SCALE = [
-  { max: -10, color: "#4A148C" }, // below -10C: deep violet - extreme cold
-  { max: 0, color: "#1565C0" },   // -10 to 0C: dark blue - freezing
-  { max: 10, color: "#0288D1" },  // 0 to 10C: blue - cold
-  { max: 15, color: "#00ACC1" },  // 10 to 15C: cyan/teal - cool
-  { max: 20, color: "#43A047" },  // 15 to 20C: green - mild
-  { max: 25, color: "#9CCC65" },  // 20 to 25C: light green/lime - pleasant
-  { max: 28, color: "#FDD835" },  // 25 to 28C: gold - warm
-  { max: 32, color: "#FB8C00" },  // 28 to 32C: orange - hot
-  { max: 36, color: "#F4511E" },  // 32 to 36C: deep orange - very hot
-  { max: 40, color: "#E53935" },  // 36 to 40C: red - extreme heat
-  { max: Infinity, color: "#AD1457" }, // above 40C: magenta/crimson - dangerous heat
+  { max: -28, color: "#241968" },
+  { max: -26, color: "#28257A" },
+  { max: -24, color: "#20348D" },
+  { max: -22, color: "#204296" },
+  { max: -20, color: "#3055A3" },
+  { max: -18, color: "#3F65AE" },
+  { max: -16, color: "#4977BA" },
+  { max: -14, color: "#5683C1" },
+  { max: -12, color: "#6991CA" },
+  { max: -10, color: "#769BD3" },
+  { max: -8, color: "#8BACDE" },
+  { max: -6, color: "#9EBCE4" },
+  { max: -4, color: "#9AC4DD" },
+  { max: -2, color: "#9BCDCE" },
+  { max: 0, color: "#9DD2C2" },
+  { max: 2, color: "#9ECDA4" },
+  { max: 4, color: "#D8DF7D" },
+  { max: 6, color: "#ECDC6D" },
+  { max: 8, color: "#F6D762" },
+  { max: 10, color: "#F7C33E" },
+  { max: 12, color: "#F3A915" },
+  { max: 14, color: "#F29802" },
+  { max: 16, color: "#F08505" },
+  { max: 18, color: "#EE760D" },
+  { max: 20, color: "#EA6311" },
+  { max: 22, color: "#EC531B" },
+  { max: 24, color: "#E74B1C" },
+  { max: 26, color: "#E04016" },
+  { max: 28, color: "#D83314" },
+  { max: 30, color: "#D12510" },
+  { max: 32, color: "#C30606" },
+  { max: 34, color: "#B6080E" },
+  { max: 36, color: "#A90813" },
+  { max: 38, color: "#8B051C" },
+  { max: 40, color: "#700418" },
+  { max: Infinity, color: "#4E010E" },
 ];
+
 
 function tempColor(tempC) {
   if (tempC == null) return null;
