@@ -3697,6 +3697,26 @@ function snapToNearestDay(container) {
   }
 }
 
+// Reveals the data-sources footer (see .app-footer in css/styles.css,
+// now a fixed bottom overlay hidden by default) only once `container`
+// (the table's own internal scroll area, .table-scroll - see its CSS
+// comment for why this can't just be a normal in-flow footer) is
+// scrolled to its own bottom, and hides it again as soon as the user
+// scrolls back up. Also checked once immediately after wiring, so a
+// short table that doesn't need scrolling at all (already "at the
+// bottom" with nothing left to scroll) still shows the footer.
+function wireFooterReveal(container) {
+  const FOOTER_REVEAL_THRESHOLD_PX = 16;
+  const footer = document.querySelector(".app-footer");
+  if (!footer) return;
+  const check = () => {
+    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= FOOTER_REVEAL_THRESHOLD_PX;
+    footer.classList.toggle("app-footer--visible", nearBottom);
+  };
+  container.addEventListener("scroll", check, { passive: true });
+  check();
+}
+
 // Waits for horizontal scrolling to settle (debounced, since a swipe or
 // trackpad gesture fires many scroll events in quick succession) then
 // snaps to the nearest day boundary via snapToNearestDay().
@@ -3814,6 +3834,7 @@ function render(days, settings, tideMeta) {
   });
   wireScrollAxisLock(screenWrap);
   wireDaySnap(screenWrap);
+  wireFooterReveal(screenWrap);
   updateNowHighlights();
 
   // --- print-only tables, 7 days per A4 landscape page ---
