@@ -48,6 +48,12 @@
      --ink flipping to near-white for dark theme made them nearly
      invisible against that same pale gradient. */
   --data-arrow-color: #0b4f8a;
+  /* Day/date header row (thead) - a fixed "deep navy + sky blue" branded
+     look in BOTH themes (by request), rather than tracking --accent (which
+     already flips per-theme and would otherwise mean this row changed
+     look depending on the Theme setting). */
+  --thead-bg: #0b1f33;
+  --thead-fg: #4fc3f7;
   --body-bg-image: none;
   font-size: 16px;
 }
@@ -449,8 +455,8 @@ table.planner-table {
 .planner-table thead th {
   position: sticky;
   top: 0;
-  background: var(--accent);
-  color: var(--accent-contrast);
+  background: var(--thead-bg);
+  color: var(--thead-fg);
   z-index: 3;
   border-bottom: 2px solid var(--border);
 }
@@ -485,6 +491,33 @@ table.planner-table {
 .fish-tail { fill: #1f6fb2; stroke: none; }
 .fish-eye { fill: var(--surface); stroke: none; }
 
+/* Drag-handle glyph shown on each row's label cell (screen table only -
+   see buildTable()'s `dragHandle`), hinting the row can be pressed and
+   dragged to reorder (see wireRowReorder()). Sits to the left of the
+   label text/icon, dimmed until hovered so it doesn't visually compete
+   with the label itself. */
+.row-drag-handle {
+  display: inline-block;
+  margin-right: 0.3em;
+  color: var(--muted, #888);
+  opacity: 0.45;
+  font-size: 0.85em;
+  letter-spacing: -0.2em;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.planner-table .row-label-col:hover .row-drag-handle { opacity: 0.9; }
+.row-labels-collapsed .row-drag-handle { display: none; }
+/* Active drag state (see wireRowReorder()): the row being dragged is
+   lifted visually above its neighbours while the pointer moves it around,
+   and the whole table gets a "grabbing" cursor + has text-selection
+   suppressed for the duration of the drag. */
+.row-reorder-active { cursor: grabbing; }
+.row-reorder-active * { user-select: none; }
+tr.row-dragging { opacity: 0.6; background: var(--surface); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25); position: relative; z-index: 5; }
+tr.row-dragging .row-drag-handle { cursor: grabbing; opacity: 1; }
+
 /* Collapsed row-label glyphs (Wind/Wind timeline, Waves/Swell, Wave
    energy) - small SVG icons rather than emoji, styled to echo the common
    weather-app "windy"/"waves" icon look. Screen-only, sized to sit inline
@@ -505,7 +538,7 @@ table.planner-table {
 
 .planner-table .dow { font-weight: 800; font-size: 1.05em; }
 .planner-table .daymonth { font-weight: 700; color: var(--ink); }
-.planner-table thead .daymonth { color: var(--accent-contrast); }
+.planner-table thead .daymonth { color: var(--thead-fg); }
 .planner-table thead th:not(.row-label-col) {
   padding-bottom: 0.5rem;
   border-bottom: 3px solid var(--border);
@@ -800,6 +833,25 @@ table.planner-table {
 .wind-timeline { position: relative; width: 100%; height: 2.9rem; }
 .wind-timeline-bg {
   position: absolute; top: 0; bottom: 0; pointer-events: none; opacity: 0.8;
+}
+/* Rain row's single full-width background gradient (see
+   rainTimelineBgGradient() in js/app.js) - unlike .wind-timeline-bg above
+   (one small div per cell), this is one div spanning the whole row so the
+   browser can interpolate colour continuously between every pair of hour
+   stops, avoiding banding between differing rainfall amounts. */
+.wind-timeline-bg-full {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 100%;
+  pointer-events: none; opacity: 0.8;
+}
+/* Day/night shading for timeline rows (see timelineNightOverlay() in
+   js/app.js) - sits on top of the gradient colour strips (so night hours
+   read as a touch darker even where they are also rain-shaded) but still
+   underneath the per-cell text (.wind-timeline-cell has z-index: 1). Uses
+   the same tint variable as the Tide curve's `.tide-night` so both rows
+   agree on how dark "night" looks in light vs dark theme. */
+.wind-timeline-night {
+  position: absolute; top: 0; bottom: 0; pointer-events: none;
+  background: var(--tide-night-tint);
 }
 .wind-timeline-cell {
   position: absolute; top: 0; display: flex; flex-direction: column;

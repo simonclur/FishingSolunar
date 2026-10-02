@@ -21,6 +21,7 @@ const LS_KEYS = {
   rowLabelsCollapsed: "fishingSolunar.rowLabelsCollapsed",
   printRows: "fishingSolunar.printRows",
   screenRows: "fishingSolunar.screenRows",
+  rowOrder: "fishingSolunar.rowOrder",
   northOffset: "fishingSolunar.northOffsetDeg",
   theme: "fishingSolunar.theme", // "system" | "light" | "dark"
 };
@@ -77,6 +78,46 @@ function saveScreenRowToggles(toggles) {
   localStorage.setItem(LS_KEYS.screenRows, JSON.stringify(toggles));
 }
 
+// User-customisable display order for the table's rows (see
+// wireRowReorder() below for the drag-to-reorder UI on the row-label
+// column, and the "Reset row order" settings button that clears this).
+// Stored as a plain array of ROW_DEFS `key` strings rather than e.g. an
+// index map, since that's both the simplest thing to drag-reorder in the
+// DOM and read back out (see wireRowReorder()'s `getRows().map(...)`), and
+// naturally self-heals if ROW_DEFS itself ever changes - any key in the
+// saved order that no longer exists in ROW_DEFS is silently dropped, and
+// any ROW_DEFS row *not* in the saved order (e.g. a new row shipped in a
+// later update, or the very first run before anything's been saved) is
+// appended at the end in ROW_DEFS' own default order, so it still shows
+// up rather than vanishing.
+function defaultRowOrder() {
+  return ROW_DEFS.map((r) => r.key);
+}
+function loadRowOrder() {
+  const validKeys = new Set(ROW_DEFS.map((r) => r.key));
+  let saved = [];
+  try {
+    const raw = localStorage.getItem(LS_KEYS.rowOrder);
+    saved = raw ? JSON.parse(raw) : [];
+  } catch {
+    saved = [];
+  }
+  const cleaned = Array.isArray(saved) ? saved.filter((k) => validKeys.has(k)) : [];
+  const missing = ROW_DEFS.map((r) => r.key).filter((k) => !cleaned.includes(k));
+  return [...cleaned, ...missing];
+}
+function saveRowOrder(order) {
+  localStorage.setItem(LS_KEYS.rowOrder, JSON.stringify(order));
+}
+// Reorders ROW_DEFS itself to match a saved key order (see loadRowOrder()
+// above) - used by buildTable() so every row (table header's row-label
+// column, every day's cell) is generated in the user's chosen order in one
+// place, rather than each row-building call site needing its own lookup.
+function orderedRowDefs(order) {
+  const byKey = new Map(ROW_DEFS.map((r) => [r.key, r]));
+  return order.map((k) => byKey.get(k)).filter(Boolean);
+}
+
 // Trip-planning "reference height" for the tide curve row: the user types
 // in a critical water depth (e.g. the depth needed to safely cross a
 // sandbar/channel) into an input in the "Tide curve" row label, and every
@@ -116,6 +157,13 @@ function resolveTheme(pref) {
 }
 function applyTheme(pref) {
   document.documentElement.setAttribute("data-theme", resolveTheme(pref));
+  // Most of the theme swap is handled live by CSS custom properties, but a
+  // few colours (e.g. the Rain row's gradient - see currentRainScale())
+  // are computed in JS and baked into inline styles at render time rather
+  // than referencing a CSS variable, so they need an explicit re-render to
+  // pick up the new theme immediately instead of waiting for the next
+  // natural refresh/date-change render.
+  if (lastRenderArgs) render(lastRenderArgs.days, lastRenderArgs.settings, lastRenderArgs.tideMeta);
 }
 function setThemePreference(pref) {
   localStorage.setItem(LS_KEYS.theme, pref);
@@ -2759,16 +2807,38 @@ function miniWindBarbSvg(windDir, windSpeed, maxSpeedForScale, outline) {
 // highlight time without threading extra params through every render call
 // site - shared by all five timeline rows (Wind/Current/Wave/Swell/Wind
 // chop) below.
+// Day/night shading for a timeline row, so it is visible at a glance which
+// hours fall before sunrise / after sunset - mirrors the Tide curve's own
+// `.tide-night` shading (tideCurveSvg() above) but as plain positioned divs
+// rather than SVG rects, since these timeline rows are built from
+// absolutely-positioned HTML cells, not an SVG canvas. Percentage-of-day
+// math matches the hour cells'/bg strips' own `hour / 24 * 100` convention
+// (rather than tideCurveSvg()'s pixel-width math) so the night zones line
+// up exactly with the same 24h grid already used elsewhere in the row.
+// Falls back to no shading if sunrise/sunset aren't available for this day
+// (e.g. missing weather data, or very high latitude midnight-sun dates).
+function timelineNightOverlay(d) {
+  if (!d.sunrise || !d.sunset || !d.date) return "";
+  const dayMs = 24 * 60 * 60 * 1000;
+  const pctFor = (dt) => Math.max(0, Math.min(100, ((dt.getTime() - d.date.getTime()) / dayMs) * 100));
+  const sunrisePct = pctFor(d.sunrise);
+  const sunsetPct = pctFor(d.sunset);
+  return `<div class="wind-timeline-night" style="left:0%;width:${sunrisePct.toFixed(2)}%;"></div>` +
+    `<div class="wind-timeline-night" style="left:${sunsetPct.toFixed(2)}%;width:${(100 - sunsetPct).toFixed(2)}%;"></div>`;
+}
+
 function timelineWrapAttrs(d, step, isPrint) {
   return isPrint ? "" : ` data-iso="${d.iso}" data-tz="${d.tz}" data-step="${step}"`;
 }
 
-function windTimelineHtml(d, intervalHours, isPrint) {
+function windTimelineHtml(d, intervalHours, isPrint, nextDay) {
   if (!d.windHourly || !d.windHourly.length) return missingDataCell(isPrint, d.weatherMissingReason);
   const step = intervalHours || 2;
   const hours = d.windHourly.filter((h) => h.hour % step === 0);
   const maxSpeedForScale = Math.max(60, ...hours.map((h) => h.speed || 0));
-  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.speed != null ? WIND_SPEED_COLORS[windSpeedColorIndex(h.speed)] : null, isPrint);
+  const nextFirstHour = nextDay?.windHourly?.find((h) => h.hour === 0);
+  const nextEdgeColor = nextFirstHour && nextFirstHour.speed != null ? WIND_SPEED_COLORS[windSpeedColorIndex(nextFirstHour.speed)] : null;
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.speed != null ? WIND_SPEED_COLORS[windSpeedColorIndex(h.speed)] : null, isPrint, nextEdgeColor);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
@@ -2783,27 +2853,52 @@ function windTimelineHtml(d, intervalHours, isPrint) {
 }
 
 // Builds a row of edge-to-edge, gradient-shaded background strips behind a
-// timeline row's cells - shared by the Current/Wave/Swell/Wind chop rows
-// below, mirroring the Wind row's own `.wind-timeline-bg` strip pattern
-// above (kept separate there since it also needs the discrete
-// WIND_SPEED_COLORS/windSpeedColorIndex lookup rather than an interpolated
-// scale). Each strip spans one interval's full cell width, and rather than
-// a single flat colour, is itself a left-to-right CSS `linear-gradient`
-// from this interval's colour to the *next* interval's colour - since one
-// strip's right-hand colour always matches the next strip's left-hand
-// colour, the strips read as one continuous, smoothly-graduated band
-// across the whole row with no visible seams, rather than discrete flat
-// blocks butted together. Screen-only (returns "" when isPrint, same
-// convention as the colour styling functions themselves).
-function timelineGradientBgStrips(hours, step, colorForHour, isPrint) {
+// timeline row's cells - shared by the Wind/Current/Wave/Swell/Wind chop/
+// Temp rows (every hour in these rows always has a value, unlike Rain -
+// see rainTimelineBgGradient()'s own dedicated implementation for that
+// sparse case). Each strip spans one interval's full cell width, and
+// rather than a single flat colour, is itself a left-to-right CSS
+// `linear-gradient` from this interval's colour to the *next* interval's
+// colour - since one strip's right-hand colour always matches the next
+// strip's left-hand colour, the strips read as one continuous,
+// smoothly-graduated band across the whole row with no visible seams,
+// rather than discrete flat blocks butted together.
+// `nextDayEdgeColor` (optional) is the colour of the *following* day's
+// first hour (each day is rendered as a separate table cell/call, so this
+// has to be threaded in from outside rather than looked up locally) - used
+// as the last hour's blend target instead of falling back to its own flat
+// colour, so the gradient keeps flowing smoothly across the midnight
+// boundary into the next day's column instead of visibly jumping there.
+// The very first hour of a day has no such backward equivalent needed:
+// since every OTHER cell already blends toward its own right-hand
+// neighbour, the previous day's last cell (once given this day's first
+// colour as its own nextDayEdgeColor) already carries the blend fully up
+// to the boundary, so this day's first cell can simply start at its own
+// colour with no extra plumbing.
+// Each strip's left/right edges are also clamped to the row's actual 0%/
+// 100% bounds for the first/last hour (rather than the usual
+// half-interval-before/after positioning used for every other hour) -
+// without this, the first hour's strip would start at a negative
+// percentage and the last hour's would end short of 100%, both of which
+// get invisibly clipped/left as a gap by the row's own bounds, revealing
+// the plain row background as a stray vertical seam right at the day
+// boundary (very noticeable in dark mode against a bright gradient).
+// Screen-only (returns "" when isPrint, same convention as the colour
+// styling functions themselves).
+function timelineGradientBgStrips(hours, step, colorForHour, isPrint, nextDayEdgeColor) {
   if (isPrint) return "";
   const cellWidthPct = (step / 24) * 100;
   return hours.map((h, i) => {
     const color = colorForHour(h);
     if (!color) return "";
-    const nextColor = colorForHour(hours[i + 1]) || color;
-    const leftPct = (h.hour / 24) * 100 - cellWidthPct / 2;
-    return `<div class="wind-timeline-bg" style="left:${leftPct.toFixed(2)}%;width:${cellWidthPct.toFixed(2)}%;background:linear-gradient(to right, ${color}, ${nextColor});"></div>`;
+    const isFirst = i === 0;
+    const isLast = i === hours.length - 1;
+    const nextColor = (isLast ? (nextDayEdgeColor || colorForHour(hours[i + 1])) : colorForHour(hours[i + 1])) || color;
+    const rawLeftPct = (h.hour / 24) * 100 - cellWidthPct / 2;
+    const leftPct = isFirst ? 0 : rawLeftPct;
+    const rightPct = isLast ? 100 : rawLeftPct + cellWidthPct;
+    const widthPct = rightPct - leftPct;
+    return `<div class="wind-timeline-bg" style="left:${leftPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%;background:linear-gradient(to right, ${color}, ${nextColor});"></div>`;
   }).join("");
 }
 
@@ -2840,12 +2935,14 @@ function miniCurrentArrowSvg(currentDir, magnitude, maxScale) {
 // percentage-of-day positioning so the two timeline rows - and the Tide
 // curve's axis - all line up on the same time grid). Sourced from the
 // Marine API's hourly ocean current fields (see hourlyCurrentForDay()).
-function currentTimelineHtml(d, intervalHours, isPrint) {
+function currentTimelineHtml(d, intervalHours, isPrint, nextDay) {
   if (!d.currentHourly || !d.currentHourly.length) return missingDataCell(isPrint, d.marineMissingReason);
   const step = intervalHours || 2;
   const hours = d.currentHourly.filter((h) => h.hour % step === 0);
   const maxSpeedForScale = Math.max(3, ...hours.map((h) => h.speed || 0));
-  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.speed != null ? interpolatedScaleColor(CURRENT_SPEED_SCALE, h.speed) : null, isPrint);
+  const nextFirstHour = nextDay?.currentHourly?.find((h) => h.hour === 0);
+  const nextEdgeColor = nextFirstHour && nextFirstHour.speed != null ? interpolatedScaleColor(CURRENT_SPEED_SCALE, nextFirstHour.speed) : null;
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.speed != null ? interpolatedScaleColor(CURRENT_SPEED_SCALE, h.speed) : null, isPrint, nextEdgeColor);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
@@ -2895,6 +2992,41 @@ const RAIN_SCALE = [
   { max: Infinity, color: "#6b1fa8" }, // torrential - violet
 ];
 
+// Dark-mode counterpart of RAIN_SCALE above. The light-theme ramp starts
+// from a very pale, near-white colour for "no rain" - correct against a
+// white page, but against the dark theme's deep-navy row background it
+// instead reads as a glaring, out-of-place bright highlight box (rather
+// than a subtle "nothing's happening here" tint). This version starts
+// close to the dark theme's own --surface/--bg tone (so near-zero rain
+// blends into the row instead of glowing) and ramps up toward the dark
+// theme's bright cyan --accent colour for heavier rain, keeping the same
+// "more rain = more intense colour" reading without the washed-out look.
+// Kept as a plain hex ramp (not CSS variables) since interpolatedScaleColor()
+// needs to numerically blend between stops, which doesn't work on
+// var(...) references - see currentRainScale() below for how this is
+// swapped in at render time based on the active theme.
+const RAIN_SCALE_DARK = [
+  { max: 0, color: "#1c3f5c" },     // none - a touch brighter than the row/page background, still subtle
+  { max: 0.2, color: "#2f6690" },   // trace/drizzle - clearly brighter than "none" so light rain reads at a glance
+  { max: 0.5, color: "#3d84b8" },   // light
+  { max: 1, color: "#4ca0d6" },     // light-moderate
+  { max: 2, color: "#5fb8e8" },     // moderate
+  { max: 5, color: "#7cc9ef" },     // heavy
+  { max: 10, color: "#a3dcf5" },    // very heavy
+  { max: Infinity, color: "#d4f0ff" }, // torrential - bright cyan-white pop
+];
+
+// Picks whichever of the two RAIN_SCALE ramps above matches the currently
+// active theme (not just the user's stored preference - see resolveTheme()
+// - so a "System" choice still gets the right ramp). Re-read at render
+// time (rather than cached) so it reflects the live <html data-theme>
+// attribute, which setThemePreference()/the matchMedia listener above both
+// keep a full table re-render in sync with (see their lastRenderArgs
+// re-render calls).
+function currentRainScale() {
+  return document.documentElement.getAttribute("data-theme") === "dark" ? RAIN_SCALE_DARK : RAIN_SCALE;
+}
+
 // Thin height-bar rendered *behind* a Wave/Swell/Wind chop arrow, scaled
 // 0..100% of that row's `maxH`, so the arrow's direction/magnitude styling
 // is kept but the eye can also compare relative heights at a glance the
@@ -2916,14 +3048,17 @@ function miniHeightBarBg(val, maxH, isPrint) {
 // that value's own direction) - same interval/positioning convention as
 // the Wind/Current timeline rows (mirrors hourlyWaveForDay()). Screen-only
 // by default, but user-togglable into print (see ROW_DEFS `printDefault`).
-function waveTimelineHtml(d, scale, intervalHours, isPrint) {
+function waveTimelineHtml(d, scale, intervalHours, isPrint, nextDay) {
   if (!d.waveHourly || !d.waveHourly.length) return missingDataCell(isPrint, d.marineMissingReason);
   const step = intervalHours || 2;
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => Math.max(h.wave || 0, h.swell || 0)));
   const valOf = (h) => h ? (h.wave != null ? h.wave : h.swell) : null;
   const dirOf = (h) => h ? (h.wave != null ? h.waveDir : h.swellDir) : null;
-  const bgStrips = timelineGradientBgStrips(hours, step, (h) => { const v = valOf(h); return v != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, v) : null; }, isPrint);
+  const nextFirstHour = nextDay?.waveHourly?.find((h) => h.hour === 0);
+  const nextVal = valOf(nextFirstHour);
+  const nextEdgeColor = nextVal != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, nextVal) : null;
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => { const v = valOf(h); return v != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, v) : null; }, isPrint, nextEdgeColor);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
@@ -2946,12 +3081,14 @@ function waveTimelineHtml(d, scale, intervalHours, isPrint) {
 // groundswell *and* its direction be tracked hour-by-hour, complementing
 // the daily Waves/Swell summary row. Screen-only by default, but the user
 // can opt into printing it too (see `printDefault` in ROW_DEFS).
-function swellTimelineHtml(d, scale, intervalHours, isPrint) {
+function swellTimelineHtml(d, scale, intervalHours, isPrint, nextDay) {
   if (!d.waveHourly || !d.waveHourly.length) return missingDataCell(isPrint, d.marineMissingReason);
   const step = intervalHours || 2;
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => h.swell || 0));
-  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.swell != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, h.swell) : null, isPrint);
+  const nextFirstHour = nextDay?.waveHourly?.find((h) => h.hour === 0);
+  const nextEdgeColor = nextFirstHour && nextFirstHour.swell != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, nextFirstHour.swell) : null;
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.swell != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, h.swell) : null, isPrint, nextEdgeColor);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
@@ -2974,12 +3111,14 @@ function swellTimelineHtml(d, scale, intervalHours, isPrint) {
 // by default (at a coarser 4h interval, matching the Wind/Current
 // timeline rows' print convention) since wind chop is a quick, useful read
 // for boat-launch safety/comfort even on the laminated sheet.
-function windWaveTimelineHtml(d, intervalHours, isPrint, scale) {
+function windWaveTimelineHtml(d, intervalHours, isPrint, scale, nextDay) {
   if (!d.waveHourly || !d.waveHourly.length) return missingDataCell(isPrint, d.marineMissingReason);
   const step = intervalHours || 2;
   const hours = d.waveHourly.filter((h) => h.hour % step === 0);
   const maxH = scale?.max || Math.max(0.3, ...hours.map((h) => h.windWave || 0));
-  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.windWave != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, h.windWave) : null, isPrint);
+  const nextFirstHour = nextDay?.waveHourly?.find((h) => h.hour === 0);
+  const nextEdgeColor = nextFirstHour && nextFirstHour.windWave != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, nextFirstHour.windWave) : null;
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.windWave != null ? interpolatedScaleColor(WAVE_HEIGHT_SCALE, h.windWave) : null, isPrint, nextEdgeColor);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
@@ -3001,35 +3140,76 @@ function windWaveTimelineHtml(d, intervalHours, isPrint, scale) {
 function miniRainBarBg(val, maxR, isPrint) {
   if (val == null || !maxR) return "";
   const pct = Math.min(Math.max(val / maxR, 0), 1) * 100;
-  const fillColor = isPrint ? "#999" : interpolatedScaleColor(RAIN_SCALE, val);
+  const fillColor = isPrint ? "#999" : interpolatedScaleColor(currentRainScale(), val);
   return `<div class="wave-timeline-barbg wave-timeline-barbg--plain"><div class="wave-timeline-barbg-fill" style="height:${pct.toFixed(0)}%;background:${fillColor}"></div></div>`;
+}
+
+// Rain row's own background strip, deliberately NOT built from the shared
+// timelineGradientBgStrips() helper above. That helper draws one small div
+// per cell, each with its own local 3-stop gradient (own colour at its
+// centre, blending only across the *second half* of its width toward the
+// next cell) - fine for Wind/Wave/Swell/Current/Temp where every hour has
+// a value and neighbouring values are usually close, but for Rain - mostly
+// zero with occasional bursts - that per-cell approach both (a) held each
+// hour's colour flat across its own first half before ramping, reading as
+// visible banding between different rainfall amounts, and (b) had no way
+// to show a zero-rain hour fading *toward* an adjacent rainy hour, since a
+// zero hour renders no strip at all. Instead this builds a *single*
+// full-width CSS gradient with one colour-stop per hour, so the browser
+// itself linearly interpolates the colour continuously across the entire
+// gap between every pair of hours - an even, banding-free transition that
+// reflects the actual increasing/decreasing rainfall amount at each point,
+// not just at hour boundaries. Zero-rain hours get the pale RAIN_SCALE
+// "no rain" colour only when immediately next to a rainy hour (so that
+// hour visibly shades/fades toward the rain beside it, per the
+// one-hour-step halo the gradient needs to feather into); zero-rain hours
+// with no rainy neighbour on either side get a fully transparent stop, so
+// long dry stretches stay unshaded rather than washing the whole row in a
+// flat grey (see the RAIN_SCALE zero-bucket discussion elsewhere in this
+// file). Screen-only, like timelineGradientBgStrips().
+function rainTimelineBgGradient(hours, isPrint) {
+  if (isPrint || !hours.length) return "";
+  const stops = hours.map((h, i) => {
+    const prev = hours[i - 1];
+    const next = hours[i + 1];
+    const hasRain = h.rain != null && h.rain > 0;
+    const neighbourHasRain = (prev && prev.rain != null && prev.rain > 0) || (next && next.rain != null && next.rain > 0);
+    let color;
+    if (hasRain) color = interpolatedScaleColor(currentRainScale(), h.rain);
+    else if (neighbourHasRain) color = interpolatedScaleColor(currentRainScale(), 0);
+    else color = "transparent";
+    const pct = (h.hour / 24) * 100;
+    return `${color} ${pct.toFixed(2)}%`;
+  });
+  return `<div class="wind-timeline-bg-full" style="background:linear-gradient(to right, ${stops.join(", ")});"></div>`;
 }
 
 // "Rain" timeline row: hourly precipitation amount (mm per interval) as a
 // colour-coded bar + value, same layout/interval convention as the
-// Wave/Swell/Wind chop rows above (timelineGradientBgStrips() background +
-// per-cell bar), but using the RAIN_SCALE blue ramp and no direction arrow
-// (rainfall has no direction). Complements the existing daily Rain row's
-// total-for-the-day figure by showing *when* through the day it's likely
-// to fall.
+// Wave/Swell/Wind chop rows above (own full-width gradient background -
+// see rainTimelineBgGradient() above - + per-cell bar), but using the
+// RAIN_SCALE blue ramp and no direction arrow (rainfall has no direction).
+// Complements the existing daily Rain row's total-for-the-day figure by
+// showing *when* through the day it's likely to fall.
 function rainTimelineHtml(d, intervalHours, isPrint, scale) {
   if (!d.rainHourly || !d.rainHourly.length) return missingDataCell(isPrint, d.weatherMissingReason);
   const step = intervalHours || 2;
   const hours = d.rainHourly.filter((h) => h.hour % step === 0);
   const maxR = scale?.max || Math.max(0.5, ...hours.map((h) => h.rain || 0));
-  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.rain != null ? interpolatedScaleColor(RAIN_SCALE, h.rain) : null, isPrint);
+  const bgStrips = rainTimelineBgGradient(hours, isPrint);
+  const nightOverlay = isPrint ? "" : timelineNightOverlay(d);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     const val = h.rain;
-    const textColor = !isPrint && val != null ? readableTextColor(interpolatedScaleColor(RAIN_SCALE, val)) : "";
+    const textColor = !isPrint && val != null && val > 0 ? readableTextColor(interpolatedScaleColor(currentRainScale(), val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wave-timeline-arrow-wrap">${miniRainBarBg(val, maxR, isPrint)}</div>` +
-      `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val != null ? val.toFixed(1) : "\u2014"}</div>` +
+      `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val == null ? "\u2014" : (val > 0 ? val.toFixed(1) : "")}</div>` +
       `</div>`;
   }).join("");
-  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
+  return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${nightOverlay}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
 }
 
 // "Temperature" timeline row: hourly air temperature as a colour-coded
@@ -3074,12 +3254,14 @@ function sunPositionIconSvg(altitude, azimuth) {
 // underneath the temperature pill, since the two naturally read together
 // (temperature broadly tracks how high the sun is) and it fills what would
 // otherwise be an empty gap under a plain value-only row.
-function tempTimelineHtml(d, intervalHours, isPrint) {
+function tempTimelineHtml(d, intervalHours, isPrint, nextDay) {
   if (!d.tempHourly || !d.tempHourly.length) return missingDataCell(isPrint, d.weatherMissingReason);
   const step = intervalHours || 2;
   const hours = d.tempHourly.filter((h) => h.hour % step === 0);
   const sunByHour = new Map((d.sunHourly || []).map((h) => [h.hour, h]));
-  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.temp != null ? tempColor(h.temp) : null, isPrint);
+  const nextFirstHour = nextDay?.tempHourly?.find((h) => h.hour === 0);
+  const nextEdgeColor = nextFirstHour && nextFirstHour.temp != null ? tempColor(nextFirstHour.temp) : null;
+  const bgStrips = timelineGradientBgStrips(hours, step, (h) => h && h.temp != null ? tempColor(h.temp) : null, isPrint, nextEdgeColor);
   const cells = hours.map((h) => {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
@@ -3210,19 +3392,19 @@ const ROW_DEFS = [
   {
     key: "windTimeline", label: "Wind", cellClass: "wind-timeline-cell-wrap",
     labelSub: { screen: "(2h)", print: "(4h)" },
-    render: (d, scales, isPrint) => windTimelineHtml(d, isPrint ? 4 : 2, isPrint),
+    render: (d, scales, isPrint, nextDay) => windTimelineHtml(d, isPrint ? 4 : 2, isPrint, nextDay),
   },
   {
     key: "currentTimeline", label: "Current", cellClass: "wind-timeline-cell-wrap",
     labelSub: { screen: "(2h)", print: "(4h)" },
     hasData: (d) => !!(d.currentHourly && d.currentHourly.some((h) => h.speed != null)),
-    render: (d, scales, isPrint) => currentTimelineHtml(d, isPrint ? 4 : 2, isPrint),
+    render: (d, scales, isPrint, nextDay) => currentTimelineHtml(d, isPrint ? 4 : 2, isPrint, nextDay),
   },
   {
     key: "windWaveTimeline", label: "Wind chop", cellClass: "wind-timeline-cell-wrap",
     labelSub: { screen: "(2h)", print: "(4h)" },
     hasData: (d) => !!(d.waveHourly && d.waveHourly.some((h) => h.windWave != null)),
-    render: (d, scales, isPrint) => windWaveTimelineHtml(d, isPrint ? 4 : 2, isPrint, scales?.windWaveTimelineScale),
+    render: (d, scales, isPrint, nextDay) => windWaveTimelineHtml(d, isPrint ? 4 : 2, isPrint, scales?.windWaveTimelineScale, nextDay),
   },
   {
     key: "waves", label: "Waves / Swell", cellClass: "wave-icon-cell",
@@ -3233,13 +3415,13 @@ const ROW_DEFS = [
     key: "waveTimeline", label: "Wave", cellClass: "wind-timeline-cell-wrap", printDefault: false,
     labelSub: { screen: "(2h)", print: "(4h)" },
     hasData: (d) => !!(d.waveHourly && d.waveHourly.some((h) => h.wave != null)),
-    render: (d, scales, isPrint) => waveTimelineHtml(d, scales?.waveTimelineScale, isPrint ? 4 : 2, isPrint),
+    render: (d, scales, isPrint, nextDay) => waveTimelineHtml(d, scales?.waveTimelineScale, isPrint ? 4 : 2, isPrint, nextDay),
   },
   {
     key: "swellTimeline", label: "Swell", cellClass: "wind-timeline-cell-wrap", printDefault: false,
     labelSub: { screen: "(2h)", print: "(4h)" },
     hasData: (d) => !!(d.waveHourly && d.waveHourly.some((h) => h.swell != null)),
-    render: (d, scales, isPrint) => swellTimelineHtml(d, scales?.waveTimelineScale, isPrint ? 4 : 2, isPrint),
+    render: (d, scales, isPrint, nextDay) => swellTimelineHtml(d, scales?.waveTimelineScale, isPrint ? 4 : 2, isPrint, nextDay),
   },
   {
     key: "waveEnergy", label: "Wave energy",
@@ -3265,7 +3447,7 @@ const ROW_DEFS = [
   {
     key: "tempTimeline", label: "Temperature", cellClass: "wind-timeline-cell-wrap", printDefault: false,
     labelSub: { screen: "(2h)", print: "(4h)" },
-    render: (d, scales, isPrint) => tempTimelineHtml(d, isPrint ? 4 : 2, isPrint),
+    render: (d, scales, isPrint, nextDay) => tempTimelineHtml(d, isPrint ? 4 : 2, isPrint, nextDay),
   },
   {
     key: "pressure", label: "Pressure", printDefault: false,
@@ -3294,7 +3476,7 @@ const ROW_DEFS = [
   },
 ];
 
-function buildTable(days, className, scales, printRowToggles, screenRowToggles) {
+function buildTable(days, className, scales, printRowToggles, screenRowToggles, rowOrder) {
   const isPrint = className.includes("print-table");
   const table = document.createElement("table");
   table.className = className;
@@ -3307,7 +3489,8 @@ function buildTable(days, className, scales, printRowToggles, screenRowToggles) 
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
-  for (const row of ROW_DEFS) {
+  const rowsInOrder = rowOrder ? orderedRowDefs(rowOrder) : ROW_DEFS;
+  for (const row of rowsInOrder) {
     // Every row is individually toggle-able for both print (via
     // printRowToggles/#printRowCheckboxes) and screen (via
     // screenRowToggles/#screenRowCheckboxes) - two fully independent
@@ -3324,6 +3507,7 @@ function buildTable(days, className, scales, printRowToggles, screenRowToggles) 
     // not even one visible day has real data for them.
     if (row.hasData && !days.some((d) => row.hasData(d))) continue;
     const tr = document.createElement("tr");
+    tr.dataset.rowKey = row.key;
     const cellClass = row.cellClass ? ` class="${row.cellClass}"` : "";
     const labelSuffix = row.labelSub ? ` <span class="row-label-sub">${isPrint ? row.labelSub.print : row.labelSub.screen}</span>` : "";
     const labelIcon = row.labelIcon ? ` ${typeof row.labelIcon === "function" ? row.labelIcon() : row.labelIcon}` : "";
@@ -3334,8 +3518,12 @@ function buildTable(days, className, scales, printRowToggles, screenRowToggles) 
       ? `<span class="row-label-short" aria-hidden="true">${ROW_SHORT_ICONS[row.key]}</span>`
       : "";
     const fullLabel = `<span class="row-label-full">${row.label}${labelIcon}${labelSuffix}</span>`;
-    tr.innerHTML = `<th class="row-label-col">${shortIcon}${fullLabel}</th>` +
-      days.map((d) => `<td${cellClass}>${row.render(d, scales, isPrint)}</td>`).join("");
+    // Screen only: a drag-handle glyph hinting the row-label cell can be
+    // pressed and dragged to reorder rows (see wireRowReorder() below) -
+    // not shown in print, which has no interactive reordering.
+    const dragHandle = isPrint ? "" : `<span class="row-drag-handle" aria-hidden="true">\u22ee\u22ee</span>`;
+    tr.innerHTML = `<th class="row-label-col">${dragHandle}${shortIcon}${fullLabel}</th>` +
+      days.map((d, i) => `<td${cellClass}>${row.render(d, scales, isPrint, days[i + 1])}</td>`).join("");
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
@@ -3396,10 +3584,87 @@ function wireRowLabelToggle(container) {
   const collapsed = localStorage.getItem(LS_KEYS.rowLabelsCollapsed) === "1";
   container.classList.toggle("row-labels-collapsed", collapsed);
   container.addEventListener("click", (e) => {
-    if (!e.target.closest(".row-label-col")) return;
+    const th = e.target.closest(".row-label-col");
+    if (!th) return;
+    // Set by wireRowReorder() right after a press-and-drag reorder ends,
+    // so the click this same gesture naturally fires on pointerup doesn't
+    // also toggle the row-label column collapsed/expanded.
+    if (th.dataset.suppressClick) return;
     const isCollapsed = container.classList.toggle("row-labels-collapsed");
     localStorage.setItem(LS_KEYS.rowLabelsCollapsed, isCollapsed ? "1" : "0");
     snapToNearestDay(container);
+  });
+}
+
+// Lets the user reorder table rows by pressing and dragging a row's label
+// cell (the leftmost sticky column, see `.row-label-col` / the drag-handle
+// glyph added in buildTable()) up/down over other rows - persisted via
+// saveRowOrder() so it survives reloads, and read back by render() (via
+// loadRowOrder()) for both the screen and print tables, so a reorder here
+// also reorders the printed sheet. Built on Pointer Events (not the HTML5
+// Drag and Drop API) since native drag-and-drop isn't well supported for
+// arbitrary elements on iOS Safari - Pointer Events work uniformly across
+// mouse, touch and pen with one code path.
+// A quick tap still falls through to wireRowLabelToggle()'s collapse/
+// expand behaviour on the same `.row-label-col` cells - distinguished here
+// by only entering "dragging" mode once the pointer has moved more than
+// DRAG_THRESHOLD_PX, and by flagging `suppressClick` on pointerup so the
+// click event that naturally follows a real drag doesn't also toggle
+// collapse.
+function wireRowReorder(container, onReorder) {
+  const DRAG_THRESHOLD_PX = 6;
+  container.addEventListener("pointerdown", (e) => {
+    if (e.button != null && e.button !== 0) return; // left mouse button / touch / pen only
+    const th = e.target.closest(".row-label-col");
+    const tbody = container.querySelector("tbody");
+    if (!th || !tbody || !tbody.contains(th)) return;
+    const tr = th.closest("tr");
+    if (!tr) return;
+    const pointerId = e.pointerId;
+    const startX = e.clientX, startY = e.clientY;
+    let dragging = false;
+
+    const getRows = () => Array.from(tbody.querySelectorAll("tr"));
+
+    const onMove = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      const dx = ev.clientX - startX, dy = ev.clientY - startY;
+      if (!dragging) {
+        if (Math.abs(dy) < DRAG_THRESHOLD_PX || Math.abs(dy) < Math.abs(dx)) return;
+        dragging = true;
+        tr.classList.add("row-dragging");
+        container.classList.add("row-reorder-active");
+        try { th.setPointerCapture(pointerId); } catch { /* unsupported - drag still works via document listeners */ }
+      }
+      ev.preventDefault();
+      const overRow = getRows().find((r) => {
+        if (r === tr) return false;
+        const rect = r.getBoundingClientRect();
+        return ev.clientY >= rect.top && ev.clientY <= rect.bottom;
+      });
+      if (overRow) {
+        const overRect = overRow.getBoundingClientRect();
+        const placeBefore = ev.clientY < overRect.top + overRect.height / 2;
+        tbody.insertBefore(tr, placeBefore ? overRow : overRow.nextSibling);
+      }
+    };
+    const onUp = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      if (dragging) {
+        tr.classList.remove("row-dragging");
+        container.classList.remove("row-reorder-active");
+        th.dataset.suppressClick = "1";
+        setTimeout(() => { delete th.dataset.suppressClick; }, 0);
+        const newOrder = getRows().map((r) => r.dataset.rowKey).filter(Boolean);
+        onReorder(newOrder);
+      }
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   });
 }
 
@@ -3515,6 +3780,7 @@ function render(days, settings, tideMeta) {
 
   const printRowToggles = loadPrintRowToggles();
   const screenRowToggles = loadScreenRowToggles();
+  const rowOrder = loadRowOrder();
   const root = $("plannerRoot");
   // render() fully rebuilds the table (root.innerHTML = "" below), which
   // throws away the old `.table-scroll` element - a brand new one always
@@ -3531,7 +3797,7 @@ function render(days, settings, tideMeta) {
   // --- interactive (screen) table ---
   const screenWrap = document.createElement("div");
   screenWrap.className = "table-scroll no-print";
-  screenWrap.appendChild(buildTable(days, "planner-table", scales, printRowToggles, screenRowToggles));
+  screenWrap.appendChild(buildTable(days, "planner-table", scales, printRowToggles, screenRowToggles, rowOrder));
   root.appendChild(screenWrap);
   if (prevScrollLeft || prevScrollTop) {
     screenWrap.scrollLeft = prevScrollLeft;
@@ -3540,6 +3806,10 @@ function render(days, settings, tideMeta) {
   wireTideCurveHover(screenWrap);
   wireRefHeightInput();
   wireRowLabelToggle(screenWrap);
+  wireRowReorder(screenWrap, (newOrder) => {
+    saveRowOrder(newOrder);
+    if (lastRenderArgs) render(lastRenderArgs.days, lastRenderArgs.settings, lastRenderArgs.tideMeta);
+  });
   wireScrollAxisLock(screenWrap);
   wireDaySnap(screenWrap);
   updateNowHighlights();
@@ -3561,7 +3831,7 @@ function render(days, settings, tideMeta) {
     heading.className = "print-heading";
     heading.textContent = `${settings.name} \u2014 ${half[0].dayMonth} to ${half[half.length - 1].dayMonth}`;
     rotate.appendChild(heading);
-    rotate.appendChild(buildTable(half, "planner-table print-table", scales, printRowToggles, screenRowToggles));
+    rotate.appendChild(buildTable(half, "planner-table print-table", scales, printRowToggles, screenRowToggles, rowOrder));
     page.appendChild(rotate);
     printWrap.appendChild(page);
   }
@@ -4190,6 +4460,10 @@ function init() {
   $("settingsForm").addEventListener("submit", (e) => {
     e.preventDefault();
     refresh();
+  });
+  $("resetRowOrderBtn").addEventListener("click", () => {
+    saveRowOrder(defaultRowOrder());
+    if (lastRenderArgs) render(lastRenderArgs.days, lastRenderArgs.settings, lastRenderArgs.tideMeta);
   });
 
   $("northCompassToggle").addEventListener("click", () => {
