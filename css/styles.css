@@ -903,6 +903,14 @@ tr.row-dragging .row-drag-handle { cursor: grabbing; opacity: 1; }
 .temp-timeline-value {
   font-size: 0.58rem; padding: 0.05em 0.3em; border-radius: 0.3em; margin-top: 0.1rem;
 }
+/* Humidity values need 2-4 chars incl. "%" - too wide to fit the narrow
+   (~2h-per-column) cell horizontally without colliding with neighbours, so
+   render the pill rotated on its side (reads bottom-to-top) like the tide
+   curve's rotated reference-time labels (.tide-ref-time--above/below). */
+.humidity-timeline-value {
+  font-size: 0.56rem; padding: 0.2em 0.05em; border-radius: 0.3em; margin-top: 0.15rem;
+  writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; line-height: 1;
+}
 .wind-barb-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; }
 .wind-barb-mini { fill: var(--ink); stroke: none; }
 .wind-barb-mini-outline { stroke: var(--bg); stroke-width: 0.8; paint-order: stroke fill; }
@@ -1049,12 +1057,16 @@ tr.row-dragging .row-drag-handle { cursor: grabbing; opacity: 1; }
   .print-table .wind-timeline-speed,
   .print-table .wave-timeline-value,
   .print-table .temp-timeline-value,
+  .print-table .humidity-timeline-value,
   .print-table .temp-pill,
   .print-table .wave-energy-pill,
   .print-table .wind-stat-val,
   .print-table .uv-badge {
     background: none !important; color: #000 !important; padding: 0 !important;
   }
+  /* Print columns (4h apart) are wide enough (.wind-timeline-cell: 5.2mm) to
+     show the humidity value horizontally, so undo the screen-only rotation. */
+  .print-table .humidity-timeline-value { writing-mode: horizontal-tb; transform: none; }
   .print-table .wind-stat-label { color: #000 !important; }
   .print-table .tide-curve-cell { padding: 0.8mm 0; }
   .print-table .tide-curve-wrap { height: 40mm; }

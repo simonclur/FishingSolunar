@@ -3368,7 +3368,7 @@ function humidityTimelineHtml(d, intervalHours, isPrint, nextDay) {
     const pillStyle = !isPrint && color ? `background-color:${color};color:${readableTextColor(color)}` : "";
     return `<div class="wind-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
-      `<div class="wind-timeline-speed temp-timeline-value" style="${pillStyle}">${val != null ? Math.round(val) + "%" : "\u2014"}</div>` +
+      `<div class="wind-timeline-speed humidity-timeline-value" style="${pillStyle}">${val != null ? Math.round(val) + "%" : "\u2014"}</div>` +
       `</div>`;
   }).join("");
   return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
