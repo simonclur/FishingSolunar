@@ -1,0 +1,16 @@
+{
+  "name": "FishingSolunar \u2014 Tide, Swell & Solunar Planner",
+  "short_name": "Solunar",
+  "description": "Tide curves, moon phase/solunar activity windows, and weather/marine forecasts for fishing trip planning.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#09142e",
+  "theme_color": "#09142e",
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-1024.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }
+  ]
+}

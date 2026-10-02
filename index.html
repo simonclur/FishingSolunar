@@ -5,7 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>FishingSolunar &mdash; Tide, Swell &amp; Solunar Planner</title>
 <link rel="stylesheet" href="css/styles.css" />
+<link rel="manifest" href="manifest.json" />
+<!-- Browser tab favicon (standard + any-size SVG fallback for browsers that
+     prefer it) -->
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/icon-32.png" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%A3%3C/text%3E%3C/svg%3E" />
+<!-- iOS "Add to Home Screen" icon (Safari ignores manifest.json's icons
+     entirely - this is the only tag it actually reads) plus standalone
+     (chromeless) launch + status-bar styling when opened from that icon. -->
+<link rel="apple-touch-icon" href="assets/icons/icon-180.png" />
+<link rel="apple-touch-icon" sizes="152x152" href="assets/icons/icon-152.png" />
+<link rel="apple-touch-icon" sizes="167x167" href="assets/icons/icon-167.png" />
+<link rel="apple-touch-icon" sizes="120x120" href="assets/icons/icon-120.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Solunar" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#09142e" />
 <script>
 // Applies the saved/OS dark-mode preference before first paint, so there's
 // no flash of the wrong theme while js/app.js (loaded at the end of

@@ -6,7 +6,7 @@
 // js/app.js (cachedFetch()), not here, since they're per-location/date and
 // don't belong in a generic asset cache.
 
-const CACHE_NAME = "fishing-solunar-shell-v44";
+const CACHE_NAME = "fishing-solunar-shell-v45";
 const PRECACHE_URLS = [
   "./",
   "index.html",
@@ -18,6 +18,15 @@ const PRECACHE_URLS = [
   "js/tides.js",
   "js/app.js",
   "data/tides/waddy-point-kgari-2026.csv",
+  "manifest.json",
+  "assets/icons/icon-32.png",
+  "assets/icons/icon-120.png",
+  "assets/icons/icon-152.png",
+  "assets/icons/icon-167.png",
+  "assets/icons/icon-180.png",
+  "assets/icons/icon-192.png",
+  "assets/icons/icon-512.png",
+  "assets/icons/icon-1024.png",
 ];
 
 self.addEventListener("install", (event) => {
