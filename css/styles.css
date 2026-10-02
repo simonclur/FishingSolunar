@@ -40,6 +40,14 @@
      here would make night hours look LIGHTER than day against the dark
      navy page background, backwards from the intent. */
   --tide-night-tint: rgba(0, 0, 0, 0.06);
+  /* Direction-arrow colour for the Wave/Swell/Current/Wind-chop timeline
+     rows (see .current-arrow-mini) - deliberately a fixed dark blue in
+     BOTH themes rather than var(--ink): these arrows are drawn on top of
+     the height-based colour-gradient strip behind them (often pale
+     yellow/green at low-moderate values), not the page background, so
+     --ink flipping to near-white for dark theme made them nearly
+     invisible against that same pale gradient. */
+  --data-arrow-color: #0b4f8a;
   --body-bg-image: none;
   font-size: 16px;
 }
@@ -812,7 +820,7 @@ table.planner-table {
 .wind-barb-mini { fill: var(--ink); stroke: none; }
 .wind-barb-mini-outline { stroke: var(--bg); stroke-width: 0.8; paint-order: stroke fill; }
 .current-arrow-mini-svg { width: 20px; height: 20px; display: block; overflow: visible; position: relative; z-index: 1; }
-.current-arrow-mini { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.current-arrow-mini { fill: none; stroke: var(--data-arrow-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 
 /* Sun-height/direction icon under each Temperature timeline pill (see
    sunPositionIconSvg()) - a horizon line, a dot sliding up/down it with
