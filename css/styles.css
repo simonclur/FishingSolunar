@@ -829,7 +829,16 @@ tr.row-dragging .row-drag-handle { cursor: grabbing; opacity: 1; }
    Tide curve's .tide-axis above it - in particular "00:00" sits exactly on
    the left edge (the midnight boundary between two day columns) instead
    of being centred within an arbitrary flex slot. */
+/* No left/right border between day columns for these gradient timeline
+   rows (Wind/Current/Wind chop/Wave/Swell/Temperature/Rain) - with
+   border-collapse, a 1px border rendered on top of the gradient's blended
+   colour-stop exactly at the day boundary (see timelineGradientBgStrips()'s
+   nextDayEdgeColor / rainTimelineBgGradient()) reads as a stray dark seam,
+   undoing that cross-day blending work. Every cell in a given row shares
+   this same class, so both sides of every such border agree on "none" and
+   nothing renders there - the top/bottom border between rows is untouched. */
 .wind-timeline-cell-wrap { padding: 0.2rem 0 !important; }
+.planner-table td.wind-timeline-cell-wrap { border-left: none; border-right: none; }
 .wind-timeline { position: relative; width: 100%; height: 2.9rem; }
 .wind-timeline-bg {
   position: absolute; top: 0; bottom: 0; pointer-events: none; opacity: 0.8;
