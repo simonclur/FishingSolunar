@@ -818,6 +818,14 @@ function $(id) { return document.getElementById(id); }
 
 // ---------- settings persistence ----------
 
+// Default location shown on a brand-new visit (no saved settings yet) and
+// used as the fallback if an on-load GPS attempt (see maybeAutoLocateOnLoad()
+// below) fails/is denied - Brighton, a Bramble Bay suburb with good bundled
+// tide data (reuses the adjacent Shorncliffe MSQ station, see
+// js/locations.js), rather than the first entry in the (geographically
+// ordered, not "most useful first") LOCATION_PRESETS list.
+const DEFAULT_PRESET = window.LOCATION_PRESETS.find((p) => p.id === "brighton") || window.LOCATION_PRESETS[0];
+
 // "Auto" start date defaults on (missing key == "1") so a first-time visit,
 // or any visit where the user has never opted into a fixed/custom start
 // date, always plans from today - including when the page is re-opened
@@ -831,12 +839,17 @@ function isStartDateAuto() {
 function loadSettings() {
   const startAuto = isStartDateAuto();
   return {
-    name: localStorage.getItem(LS_KEYS.name) || window.LOCATION_PRESETS[0].name,
-    lat: parseFloat(localStorage.getItem(LS_KEYS.lat) ?? window.LOCATION_PRESETS[0].lat),
-    lon: parseFloat(localStorage.getItem(LS_KEYS.lon) ?? window.LOCATION_PRESETS[0].lon),
+    name: localStorage.getItem(LS_KEYS.name) || DEFAULT_PRESET.name,
+    lat: parseFloat(localStorage.getItem(LS_KEYS.lat) ?? DEFAULT_PRESET.lat),
+    lon: parseFloat(localStorage.getItem(LS_KEYS.lon) ?? DEFAULT_PRESET.lon),
     start: startAuto ? isoDate(new Date()) : (localStorage.getItem(LS_KEYS.start) || isoDate(new Date())),
     startAuto,
     key: localStorage.getItem(LS_KEYS.key) || "",
+    // Deliberately *not* defaulted to DEFAULT_PRESET.tideStationId here -
+    // Brighton's exact lat/lon match already resolves to its own
+    // tideStationId via buildPlan()'s `exactPreset` lookup (see below), and
+    // defaulting this field would wrongly persist "shorncliffe" as a
+    // pinned override once the user later changes location.
     tideStationId: localStorage.getItem(LS_KEYS.tideStationId) || "",
   };
 }
@@ -941,14 +954,33 @@ function updateBundledTideDataStatus() {
   }
 }
 
+// A preset can point at another preset's tideStationId instead of its own
+// id - e.g. Brighton reuses Shorncliffe's bundled MSQ data (see
+// js/locations.js) rather than having its own gauge. Resolving to the real
+// station preset here (instead of leaving callers to show the *borrowing*
+// preset's own name/coordinates) means the UI always names the actual
+// physical station ("Shorncliffe"), not the suburb that merely borrows it -
+// and also gets that station's real, validated gauge coordinates for the
+// marine-data approximation instead of the borrowing preset's own (possibly
+// rougher) lat/lon. A preset that *is* its own station (tideStationId ===
+// id, the common case) is returned unchanged.
+function actualTideStationPreset(preset) {
+  if (!preset || !preset.tideStationId || preset.tideStationId === preset.id) return preset;
+  return window.LOCATION_PRESETS.find((p) => p.id === preset.tideStationId) || preset;
+}
+
 function resolveTideStation(lat, lon, overrideId) {
   if (overrideId) {
     const pinned = window.LOCATION_PRESETS.find((p) => p.id === overrideId && p.tideStationId);
-    if (pinned) return { preset: pinned, distanceKm: window.LocationUtils.haversineKm(lat, lon, pinned.lat, pinned.lon), auto: false };
+    if (pinned) {
+      const station = actualTideStationPreset(pinned);
+      return { preset: station, distanceKm: window.LocationUtils.haversineKm(lat, lon, station.lat, station.lon), auto: false };
+    }
   }
   const nearest = window.LocationUtils.nearestPresetWithTide(lat, lon);
   if (!nearest || nearest.distanceKm > AUTO_TIDE_STATION_MAX_KM) return null;
-  return { preset: nearest, distanceKm: nearest.distanceKm, auto: true };
+  const station = actualTideStationPreset(nearest);
+  return { preset: station, distanceKm: window.LocationUtils.haversineKm(lat, lon, station.lat, station.lon), auto: true };
 }
 
 // ---------- data fetching ----------
@@ -1525,8 +1557,15 @@ async function buildPlan(settings) {
   // what lets a custom/GPS location (e.g. Fingal Head, NSW) still get
   // official local tide highs/lows from the nearest bundled station (e.g.
   // Southport/Gold Coast Seaway, QLD) instead of only the WorldTides API.
+  // actualTideStationPreset() redirects a preset that merely *borrows*
+  // another's tideStationId (e.g. Brighton -> Shorncliffe) to that real
+  // station preset, so the resolved name/coordinates/distance are all the
+  // genuine gauge's, not the borrowing suburb's own approximate point.
   const tideResolved = exactPreset?.tideStationId
-    ? { preset: exactPreset, distanceKm: 0, auto: false }
+    ? (() => {
+        const station = actualTideStationPreset(exactPreset);
+        return { preset: station, distanceKm: window.LocationUtils.haversineKm(lat, lon, station.lat, station.lon), auto: false };
+      })()
     : resolveTideStation(lat, lon, tideStationId);
   const tidePreset = tideResolved?.preset || null;
   const tz = exactPreset?.timezone || tidePreset?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -4416,6 +4455,45 @@ function updateNearestInfo() {
 // straight into the lat/lon fields - the browser handles the actual
 // permission prompt/hardware access, so this is just wiring + friendly
 // status text for the common failure modes (denied, unsupported, timeout).
+// Runs once, right after init() wires everything up: on a genuinely
+// first-ever visit (nothing saved in localStorage yet, so loadSettings()
+// above has just populated the Brighton default), silently try a GPS fix
+// and switch to it on success - this is the "default attempt" at GPS the
+// user asked for. Any returning visit (localStorage already has a saved
+// name, whether that's Brighton, a GPS fix from a previous visit, or
+// anything the user deliberately picked) skips this entirely and just
+// refreshes with the saved settings, so a once-off GPS attempt never
+// re-prompts or silently overrides a location the user already chose.
+function maybeAutoLocateOnFirstVisit() {
+  const isFirstVisit = localStorage.getItem(LS_KEYS.name) === null;
+  if (!isFirstVisit || !("geolocation" in navigator)) {
+    refresh();
+    return;
+  }
+  const statusEl = $("gpsStatus");
+  if (statusEl) statusEl.textContent = "Trying your current location\u2026";
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      $("lat").value = pos.coords.latitude.toFixed(4);
+      $("lon").value = pos.coords.longitude.toFixed(4);
+      syncLatLonDisplay();
+      setLocationMode("gps");
+      syncNearestPresetAndName(pos.coords.latitude, pos.coords.longitude, "My location (GPS)");
+      applyReverseGeocodedName(parseFloat($("lat").value), parseFloat($("lon").value));
+      if (statusEl) statusEl.textContent = `Location found (accuracy ~${Math.round(pos.coords.accuracy)} m).`;
+      refresh();
+    },
+    () => {
+      // Denied/unavailable/timed out - fall back to the Brighton default
+      // (or whatever was already loaded) without bothering the user with
+      // an error message, since they never explicitly asked for GPS here.
+      if (statusEl) statusEl.textContent = "";
+      refresh();
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+  );
+}
+
 function useGpsLocation() {
   const statusEl = $("gpsStatus");
   if (!("geolocation" in navigator)) {
@@ -4746,7 +4824,7 @@ function init() {
   wireMissingDataPopover();
 
   // auto-load on first visit if we have a saved/preset location
-  refresh();
+  maybeAutoLocateOnFirstVisit();
 
   // If the network comes back after being offline, silently retry so fresh
   // data replaces the cached fallback and the stale badge clears.

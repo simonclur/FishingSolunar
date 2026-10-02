@@ -305,6 +305,20 @@ window.LOCATION_PRESETS = [
     tideStationId: "brisbane-bar",
   },
   {
+    id: "brighton",
+    name: "Brighton, Queensland, Australia",
+    region: "South East Queensland",
+    lat: -27.29,
+    lon: 153.08,
+    timezone: "Australia/Brisbane",
+    // Brighton has no MSQ tide-gauge station of its own - it's a bayside
+    // suburb immediately adjacent to (south of) Shorncliffe on Bramble Bay,
+    // so this reuses Shorncliffe's official predicted tide data/marine
+    // reference point rather than falling back to the less-precise
+    // nearest-preset auto-match.
+    tideStationId: "shorncliffe",
+  },
+  {
     id: "shorncliffe",
     name: "Shorncliffe, Queensland, Australia",
     region: "South East Queensland",
