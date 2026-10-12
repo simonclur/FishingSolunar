@@ -40,6 +40,7 @@
      here would make night hours look LIGHTER than day against the dark
      navy page background, backwards from the intent. */
   --tide-night-tint: rgba(0, 0, 0, 0.06);
+  --timeline-night-tint: rgba(0, 0, 0, 0.06);
   /* Direction-arrow colour for the Wave/Swell/Current/Wind-chop timeline
      rows (see .current-arrow-mini) - deliberately a fixed dark blue in
      BOTH themes rather than var(--ink): these arrows are drawn on top of
@@ -103,6 +104,7 @@ html[data-theme="dark"] {
      invisible, whereas the light-theme value above is tuned for a white
      background. */
   --tide-night-tint: rgba(0, 0, 0, 0.4);
+  --timeline-night-tint: rgba(5, 15, 30, 0.22);
   /* Subtle fixed wave-crest silhouette + a faint moon glow, layered over
      a deep-navy-to-teal gradient "night sea" - low-contrast/low-opacity
      by design so it reads as ambience behind the header/footer/table
@@ -893,8 +895,7 @@ tr.row-dragging .row-drag-handle { cursor: grabbing; opacity: 1; }
    the same tint variable as the Tide curve's `.tide-night` so both rows
    agree on how dark "night" looks in light vs dark theme. */
 .wind-timeline-night {
-  position: absolute; top: 0; bottom: 0; pointer-events: none;
-  background: var(--tide-night-tint);
+  position: absolute; top: 0; bottom: 0; left: 0; width: 100%; pointer-events: none;
 }
 .wind-timeline-cell {
   position: absolute; top: 0; display: flex; flex-direction: column;
@@ -947,6 +948,7 @@ tr.row-dragging .row-drag-handle { cursor: grabbing; opacity: 1; }
    even at 100% height. */
 .wave-timeline-cell .wind-timeline-hour { margin-bottom: 0.1rem; }
 .wave-timeline-value { font-size: 0.46rem; }
+.rain-timeline-value { font-size: 0.62rem; color: var(--ink); text-shadow: 0 0 3px var(--bg); }
 .wave-timeline-arrow-wrap { position: relative; width: 20px; height: 20px; }
 .wave-timeline-barbg {
   position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);

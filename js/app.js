@@ -2998,8 +2998,17 @@ function timelineNightOverlay(d) {
   const pctFor = (dt) => Math.max(0, Math.min(100, ((dt.getTime() - d.date.getTime()) / dayMs) * 100));
   const sunrisePct = pctFor(d.sunrise);
   const sunsetPct = pctFor(d.sunset);
-  return `<div class="wind-timeline-night" style="left:0%;width:${sunrisePct.toFixed(2)}%;"></div>` +
-    `<div class="wind-timeline-night" style="left:${sunsetPct.toFixed(2)}%;width:${(100 - sunsetPct).toFixed(2)}%;"></div>`;
+  // Feathered edges (~±40min around sunrise/sunset) instead of a hard cut
+  const f = 2.8;
+  const stops = [
+    `var(--timeline-night-tint) 0%`,
+    `var(--timeline-night-tint) ${Math.max(0, sunrisePct - f).toFixed(2)}%`,
+    `transparent ${Math.min(100, sunrisePct + f).toFixed(2)}%`,
+    `transparent ${Math.max(0, sunsetPct - f).toFixed(2)}%`,
+    `var(--timeline-night-tint) ${Math.min(100, sunsetPct + f).toFixed(2)}%`,
+    `var(--timeline-night-tint) 100%`,
+  ];
+  return `<div class="wind-timeline-night" style="background:linear-gradient(to right, ${stops.join(", ")});"></div>`;
 }
 
 function timelineWrapAttrs(d, step, isPrint) {
@@ -3359,6 +3368,13 @@ function rainTimelineBgGradient(hours, isPrint) {
   return `<div class="wind-timeline-bg-full" style="background:linear-gradient(to right, ${stops.join(", ")});"></div>`;
 }
 
+// Font size scales with rainfall: 0.1mm tiny, 5mm = 0.62rem, 10mm+ largest.
+function rainValueFontRem(mm) {
+  if (mm == null || mm <= 0) return 0.62;
+  const size = mm <= 5 ? 0.4 + ((Math.max(mm, 0.1) - 0.1) / 4.9) * 0.22 : 0.62 + (Math.min(mm, 10) - 5) / 5 * 0.2;
+  return size.toFixed(2);
+}
+
 // "Rain" timeline row: hourly precipitation amount (mm per interval) as a
 // colour-coded bar + value, same layout/interval convention as the
 // Wave/Swell/Wind chop rows above (own full-width gradient background -
@@ -3377,11 +3393,14 @@ function rainTimelineHtml(d, intervalHours, isPrint, scale) {
     const hh = String(h.hour).padStart(2, "0");
     const leftPct = (h.hour / 24) * 100;
     const val = h.rain;
-    const textColor = !isPrint && val != null && val > 0 ? readableTextColor(interpolatedScaleColor(currentRainScale(), val)) : "";
+    // The value label sits below the bar on the row background (not on the
+    // bar), so only light theme needs a fixed contrast colour; dark inherits --ink.
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    const textColor = !isPrint && !isDark && val != null && val > 0 ? readableTextColor(interpolatedScaleColor(currentRainScale(), val)) : "";
     return `<div class="wind-timeline-cell wave-timeline-cell" data-hour="${h.hour}" style="left:${leftPct.toFixed(2)}%;">` +
       `<div class="wind-timeline-hour">${hh}</div>` +
       `<div class="wave-timeline-arrow-wrap">${miniRainBarBg(val, maxR, isPrint)}</div>` +
-      `<div class="wind-timeline-speed wave-timeline-value"${textColor ? ` style="color:${textColor}"` : ""}>${val == null ? "\u2014" : (val > 0 ? val.toFixed(1) : "")}</div>` +
+      `<div class="wind-timeline-speed wave-timeline-value rain-timeline-value" style="font-size:${rainValueFontRem(val)}rem${textColor ? `;color:${textColor}` : ""}">${val == null ? "\u2014" : (val > 0 ? val.toFixed(1) : "")}</div>` +
       `</div>`;
   }).join("");
   return `<div class="wind-timeline"${timelineWrapAttrs(d, step, isPrint)}>${bgStrips}${nightOverlay}${isPrint ? "" : `<div class="wind-timeline-now"></div>`}${cells}</div>`;
