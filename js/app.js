@@ -4589,6 +4589,7 @@ async function refresh() {
     return;
   }
   saveSettings(settings);
+  if (window.RadarBackground) RadarBackground.update({ lat: settings.lat, lon: settings.lon });
   setStatus("Loading\u2026");
   try {
     const { days, tideSource, tideNotes, tideStationInfo, curveScale, waveScale, waveTimelineScale, windWaveTimelineScale, rainTimelineScale, dataFromCache, oldestFetchedAt } = await buildPlan(settings);
@@ -4836,6 +4837,34 @@ function init() {
   // dropdown to reflect the current choice and wires it up for changes.
   $("themeSelect").value = getThemePreference();
   $("themeSelect").addEventListener("change", () => setThemePreference($("themeSelect").value));
+
+  // Radar/satellite background (js/radar.js): persists its own mode/opacity,
+  // this just wires the Settings controls. Its data refresh rides on
+  // refresh() below (see RadarBackground.update()).
+  if (window.RadarBackground) {
+    RadarBackground.init();
+    $("radarModeSelect").value = RadarBackground.getMode();
+    $("radarOpacity").value = RadarBackground.getOpacity();
+    $("radarModeSelect").addEventListener("change", () => RadarBackground.setMode($("radarModeSelect").value));
+    $("radarPeekBtn").addEventListener("click", () => {
+      const on = document.documentElement.classList.toggle("radar-peek");
+      $("radarPeekBtn").setAttribute("aria-pressed", String(on));
+    });
+    const syncRadarRange = () => {
+      const rain = RadarBackground.getProduct() !== "now";
+      $("radarRangeSelect").value = rain ? "128" : String(RadarBackground.getRange());
+      $("radarRangeSelect").disabled = rain;
+    };
+    $("radarProductSelect").value = RadarBackground.getProduct();
+    $("radarRangeSelect").value = String(RadarBackground.getRange());
+    syncRadarRange();
+    $("radarProductSelect").addEventListener("change", () => {
+      RadarBackground.setProduct($("radarProductSelect").value);
+      syncRadarRange();
+    });
+    $("radarRangeSelect").addEventListener("change", () => RadarBackground.setRange($("radarRangeSelect").value));
+    $("radarOpacity").addEventListener("input", () => RadarBackground.setOpacity($("radarOpacity").value));
+  }
 
   $("printBtn").addEventListener("click", () => window.print());
   $("forceRefreshBtn").addEventListener("click", forceRefresh);

@@ -42,3 +42,7 @@ API instead.
 
 - [Open-Meteo](https://open-meteo.com/) — weather & marine forecast (CC BY 4.0 data licence, free for non-commercial use)
 - [WorldTides](https://www.worldtides.info/) — tide predictions (commercial API, user-supplied key)
+- [Bureau of Meteorology](https://www.bom.gov.au/) — rain radar images, optional background (© Commonwealth of Australia; see https://www.bom.gov.au/other/copyright.shtml)
+- [RainViewer](https://www.rainviewer.com/api.html) — fallback radar tiles, optional background
+- [NASA GIBS](https://earthdata.nasa.gov/gibs) — Himawari satellite imagery tiles, optional background
+- [Esri](https://www.esri.com/) World Light/Dark Gray canvas — © Esri, HERE, Garmin, © OpenStreetMap contributors — optional background basemap

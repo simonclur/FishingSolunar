@@ -144,6 +144,44 @@ body {
 .no-print { }
 .print-only { display: none; }
 
+/* ---------- radar / satellite background (js/radar.js) ---------- */
+
+.radar-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.radar-bg[hidden] { display: none; }
+.radar-map { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-origin: 0 0; }
+.radar-layer { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.radar-tile { position: absolute; width: 256px; height: 256px; max-width: none; user-select: none; }
+.radar-frame { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity 0.35s linear; }
+.radar-frame.on { opacity: 1; }
+.radar-frame-img { max-width: none; }
+.radar-opacity-label { margin-top: 0.4rem; }
+.radar-attribution { margin: 0.4rem 0 0; }
+#radarCaption { display: block; font-weight: 600; }
+#radarCaption[hidden] { display: none; }
+
+#radarPeekBtn { display: none; }
+html.has-radar #radarPeekBtn { display: inline-block; }
+html.has-radar #radarPeekBtn[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); }
+html.has-radar.radar-peek #plannerRoot,
+html.has-radar.radar-peek .app-footer { visibility: hidden; }
+html.has-radar.radar-peek .radar-bg { opacity: 1 !important; }
+
+/* Keep the table/panels readable over the moving imagery: a translucent
+   scrim in the theme colour, only while a background is showing. */
+html.has-radar { --radar-scrim: rgba(255, 255, 255, 0.22); --radar-scrim-strong: rgba(255, 255, 255, 0.55); }
+html.has-radar[data-theme="dark"] { --radar-scrim: rgba(11, 31, 51, 0.3); --radar-scrim-strong: rgba(11, 31, 51, 0.6); }
+html.has-radar .planner-table:not(.print-table) { background: var(--radar-scrim); }
+html.has-radar .planner-table .row-label-col,
+html.has-radar .app-footer,
+html.has-radar .settings-panel,
+html.has-radar .north-compass-panel { background: var(--radar-scrim-strong); }
+
 /* ---------- header / footer ---------- */
 
 .app-header {

@@ -10,6 +10,8 @@ js/astro.js                 moon position / rise / set / illumination (adapted f
 js/moon.js                  moon phase name/icon built on js/astro.js
 js/solunar.js                major/minor period + 0-5 star rating, built on js/astro.js + js/moon.js
 js/tides.js                 local tide CSV parser/loader (js/tides.js -> window.TideCalc)
+js/radar.js                 full-screen radar/satellite background (window.RadarBackground)
+js/radar-sites.js           BOM 128 km radar site list (id, lat, lon)
 js/app.js                   settings form wiring, data fetching + offline cache, day-model building, rendering
 sw.js                       service worker: offline cache for the app shell + local tide CSVs
 data/tides/*.csv             bundled official tide prediction files, one per station+year
@@ -1278,6 +1280,33 @@ opening either panel.
    override should always win.
 
 
+
+## Radar / satellite background (2026-10)
+
+`js/radar.js` (`window.RadarBackground`, loaded before `js/app.js`, site list
+in `js/radar-sites.js`) owns a fixed `#radarBg` layer (`z-index: -1`,
+`pointer-events: none`, `.no-print`) inserted first in `<body>`, so the
+planner renders over it unchanged. While a background is showing, `<html>`
+gets `has-radar`, which swaps the table / row-label / footer / settings
+backgrounds for translucent theme-colour scrims (`--radar-scrim*` in
+`css/styles.css`) to stay readable.
+
+Everything inside is positioned in Web-Mercator "world pixel" space centred
+on the current location: `layoutFor()` picks an integer tile zoom and a CSS
+`scale` so the source's footprint spans the viewport's larger dimension
+(BOM: 1.5 x radar range; RainViewer ~350 km; satellite ~1500 km). Layers:
+Esri gray basemap, animated frames (one visible at a time, cross-faded),
+Esri labels on top. Frames are tile sets (RainViewer/GIBS) or one positioned
+BOM image per frame (`placeBomFrames()`). Sources, fallbacks and terms are in
+`docs/DATA_SOURCES.md`.
+
+Refresh alignment: `refresh()` in `js/app.js` calls
+`RadarBackground.update({lat, lon})` (rebuild on a location change or if the
+last build is >= 4.5 min old); `init()` also starts a 5-minute interval, a
+`visibilitychange` catch-up, a debounced resize rebuild and a `data-theme`
+observer (basemap re-tint). Mode/strength persist in `localStorage`
+(`fishingSolunar.radarMode` / `fishingSolunar.radarOpacity`). Failures
+degrade silently (no overlay) and never affect the planner.
 
 ## Dark/light theme (2026-10)
 
