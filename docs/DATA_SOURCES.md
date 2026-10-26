@@ -279,7 +279,49 @@ and that's clearly flagged rather than silently shown as current.
   it never blocks the initial weather/tide fetch; see "Location naming:
   weather place name vs tide/marine station" in `docs/ARCHITECTURE.md`.
 
+## Radar / satellite background (`js/radar.js`)
+
+Optional full-screen animated background (Settings > "Weather background":
+Rain radar / Cloud satellite / Off, plus a strength slider; default radar at
+55%). All imagery is loaded as plain `<img>` elements (sent with
+`referrerpolicy="no-referrer"`) - never fetched/read - and is not cached by
+the service worker.
+
+- **BOM rain radar** (primary for radar mode): nearest of the 128 km radars
+  in `js/radar-sites.js` when the location is within ~109 km of it. Frames
+  are `https://reg.bom.gov.au/radar/<IDRxx>3.T.<YYYYMMDDHHMM UTC>.png`
+  (5-minute cadence, ~7 frames kept by BOM). BOM publishes no CORS-readable
+  frame list and blocks scraping of its HTML, so frame times are probed with
+  image loads (see `fetchBom()`). The baked-in copyright banner/legend strips
+  are cropped from the view; attribution is in the page footer. BOM's
+  copyright/disclaimer applies; the official sanctioned feed is anonymous FTP
+  (`ftp.bom.gov.au/anon/gen/radar`), which a browser can't use - hotlinking
+  may stop working without notice, in which case the app silently falls back.
+  Settings choose the view and range: current radar at 64/128/256/512 km
+  (suffix `4`/`3`/`2`/`1`), or the 128 km-only rainfall products
+  `IDR<site>C` (since 9am, hourly at :15 UTC) and `IDR<site>D` (24-hour,
+  daily at 23:00 UTC). Rainfall frame times are computed, not probed. The
+  nearest-site check scales with the chosen range.
+- **RainViewer** (fallback when no BOM radar is in range or BOM frames
+  fail): `https://api.rainviewer.com/public/weather-maps.json` + XYZ tiles
+  from `tilecache.rainviewer.com` (10-minute frames, up to 8 shown, global).
+- **Cloud satellite**: NASA GIBS Himawari AHI Band 13 clean infrared tiles
+  (`gibs.earthdata.nasa.gov/wmts/epsg3857/best`, Web-Mercator, 10-minute
+  frames, ~30-40 minute latency; latest time from the layer's Domains XML).
+- **Basemap**: Esri "World Light/Dark Gray" canvas base + reference (labels)
+  tiles, matched to the app theme. (CARTO basemap tiles were tried first but
+  now return an "API key required" watermark.)
+- Refresh: rebuilt on every `refresh()` (location change, or >= 4.5 minutes
+  since the last build), on a 5-minute timer, and when the tab becomes
+  visible again; paused while the tab is hidden, and with
+  `prefers-reduced-motion` only the latest frame is shown. Never printed
+  (`.no-print`).
+
 ## Known limitations
+
+- Radar background: BOM radar only covers Australia; outside it (or if BOM
+  frames can't be loaded) RainViewer is used. Satellite imagery lags by
+  ~30-40 minutes.
 
 - Tide data: local files only exist for stations bundled in `data/tides/`
   (currently Waddy Point 2026). Other locations, or years beyond what's

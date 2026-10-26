@@ -51,6 +51,7 @@
   <div class="header-actions">
     <span id="lastUpdatedLabel" class="last-updated" hidden></span>
     <button id="forceRefreshBtn" class="icon-btn" aria-label="Force refresh" title="Force refresh (clears cached data and reloads)">&#8635;</button>
+    <button id="radarPeekBtn" class="icon-btn" aria-label="Hide forecast to see the weather background" aria-pressed="false" title="Hide/show the forecast to see the radar or cloud background">&#128065;</button>
     <button id="northCompassToggle" class="icon-btn north-compass-toggle" aria-label="Orientation compass" title="Orientation compass (set where North actually is relative to this screen)"></button>
     <button id="settingsToggle" class="icon-btn" aria-label="Settings" title="Settings">&#9881;</button>
   </div>
@@ -90,6 +91,31 @@
         <option value="dark">Dark</option>
       </select>
       <span class="hint">Dark mode uses a night-sky/sea look; doesn't affect what gets printed.</span>
+    </div>
+    <div class="field">
+      <label for="radarModeSelect">Weather background</label>
+      <select id="radarModeSelect">
+        <option value="radar">Rain radar (animated)</option>
+        <option value="satellite">Cloud satellite (animated)</option>
+        <option value="off">Off</option>
+      </select>
+      <label for="radarProductSelect" class="radar-opacity-label">Radar view</label>
+      <select id="radarProductSelect">
+        <option value="now">Current rain radar</option>
+        <option value="since9am">Rainfall since 9am</option>
+        <option value="24h">24-hour rainfall</option>
+      </select>
+      <label for="radarRangeSelect" class="radar-opacity-label">Radar range</label>
+      <select id="radarRangeSelect">
+        <option value="64">64 km</option>
+        <option value="128">128 km</option>
+        <option value="256">256 km</option>
+        <option value="512">512 km</option>
+      </select>
+      <span class="hint" id="radarRangeHint">Rainfall totals are only published at 128 km. Outside BOM radar coverage a global radar is used instead.</span>
+      <label for="radarOpacity" class="radar-opacity-label">Background strength <span class="hint">(lower = fainter behind the table)</span></label>
+      <input id="radarOpacity" type="range" min="0.1" max="1" step="0.05" value="0.95" />
+      <span class="hint">Full-screen radar/satellite for the current location, refreshed with the page and every 5 minutes. Not printed.</span>
     </div>
     <div class="field">
       <label for="regionFilter">Region</label>
@@ -210,6 +236,8 @@
   moon phase &amp; solunar rating computed locally. Cross-check tides against the
   <a href="https://www.bom.gov.au/ntc/IDO59001/IDO59001_2026_QLD_TP035.pdf" target="_blank" rel="noopener">BOM tide table PDF</a>.
   See <a href="docs/OVERVIEW.md" target="_blank" rel="noopener">docs</a> for details.</p>
+  <p class="radar-attribution">Background: rain radar &copy; Commonwealth of Australia, <a href="https://www.bom.gov.au/" target="_blank" rel="noopener">Bureau of Meteorology</a> / <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a>; satellite imagery from <a href="https://earthdata.nasa.gov/gibs" target="_blank" rel="noopener">NASA GIBS</a> (Himawari); map &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a>, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.
+  <span id="radarCaption" hidden></span></p>
 </footer>
 
 <script src="js/locations.js"></script>
@@ -217,6 +245,8 @@
 <script src="js/moon.js"></script>
 <script src="js/solunar.js"></script>
 <script src="js/tides.js"></script>
+<script src="js/radar-sites.js"></script>
+<script src="js/radar.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
