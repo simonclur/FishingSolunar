@@ -90,8 +90,16 @@ function saveScreenRowToggles(toggles) {
 // later update, or the very first run before anything's been saved) is
 // appended at the end in ROW_DEFS' own default order, so it still shows
 // up rather than vanishing.
+const PREFERRED_ROW_ORDER = [
+  "solunar", "tideHigh", "tideCurve", "tideLow", "windTimeline", "rain",
+  "rainTimeline", "feelsLikeTimeline", "humidityTimeline", "sun", "weather",
+  "wind", "waveTimeline", "swellTimeline", "waveEnergy", "currentTimeline",
+  "windWaveTimeline", "waves", "tempTimeline", "dewPointTimeline",
+];
 function defaultRowOrder() {
-  return ROW_DEFS.map((r) => r.key);
+  const keys = ROW_DEFS.map((r) => r.key);
+  const preferred = PREFERRED_ROW_ORDER.filter((k) => keys.includes(k));
+  return [...preferred, ...keys.filter((k) => !preferred.includes(k))];
 }
 function loadRowOrder() {
   const validKeys = new Set(ROW_DEFS.map((r) => r.key));
@@ -103,7 +111,7 @@ function loadRowOrder() {
     saved = [];
   }
   const cleaned = Array.isArray(saved) ? saved.filter((k) => validKeys.has(k)) : [];
-  const missing = ROW_DEFS.map((r) => r.key).filter((k) => !cleaned.includes(k));
+  const missing = defaultRowOrder().filter((k) => !cleaned.includes(k));
   return [...cleaned, ...missing];
 }
 function saveRowOrder(order) {

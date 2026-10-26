@@ -1308,6 +1308,22 @@ observer (basemap re-tint). Mode/strength persist in `localStorage`
 (`fishingSolunar.radarMode` / `fishingSolunar.radarOpacity`). Failures
 degrade silently (no overlay) and never affect the planner.
 
+Default mode is `satellite` (`DEFAULT_MODE` in `js/radar.js`; cloud imagery
+from NASA GIBS Himawari) rather than the BOM/RainViewer rain radar. Users who
+already saved a mode keep it; rain radar and "Off" remain selectable in
+Settings.
+
+### Default row order (2026-10)
+
+`PREFERRED_ROW_ORDER` in `js/app.js` defines the default table row order:
+solunar, high tide, tide curve, low tide, wind (2h), rain, rain (2h), feels
+like (2h), humidity (2h), sun, weather, wind, wave (2h), swell (2h), wave
+energy, current (2h), wind chop (2h), waves/swell, air temp (2h), dew point
+(2h). Rows not listed (sea temp, pressure, moon) are appended after, in
+`ROW_DEFS` order. `defaultRowOrder()` and `loadRowOrder()` both use it, so new
+visitors, "Reset row order to default", and rows missing from a saved order
+all follow it. Saved custom orders are unchanged.
+
 ## Dark/light theme (2026-10)
 
 A "Theme" setting (System/Light/Dark, default System) was added:

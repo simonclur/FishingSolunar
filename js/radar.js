@@ -34,7 +34,7 @@
     since9am: { suffix: "C", label: "rainfall since 9am", stepMs: 60 * MIN, minute: 15, keepMs: 12 * 60 * MIN, count: 8 },
     "24h": { suffix: "D", label: "24-hour rainfall", stepMs: 24 * 60 * MIN, minute: 0, hourUtc: 23, keepMs: 9 * 24 * 60 * MIN, count: 7 },
   };
-  const DEFAULT_MODE = "radar";
+  const DEFAULT_MODE = "satellite";
   const DEFAULT_OPACITY = 0.95;
   // BOM radar frames have a copyright banner (top) and a timestamp/legend
   // strip (bottom) baked in; crop them out of the full-screen view (the
