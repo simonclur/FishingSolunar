@@ -154,6 +154,10 @@ body {
   pointer-events: none;
 }
 .radar-bg[hidden] { display: none; }
+/* Smooth clouds drifting over the planner: only the transparent cloud layer
+   is shown (no basemap), above the content but below the header (z 30). */
+.radar-bg.radar-front { z-index: 25; }
+.radar-bg.radar-front .radar-layer:not(:nth-child(2)) { display: none; }
 .radar-map { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-origin: 0 0; }
 .radar-layer { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 .radar-tile { position: absolute; width: 256px; height: 256px; max-width: none; user-select: none; }

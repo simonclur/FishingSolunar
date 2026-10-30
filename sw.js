@@ -6,7 +6,7 @@
 // js/app.js (cachedFetch()), not here, since they're per-location/date and
 // don't belong in a generic asset cache.
 
-const CACHE_NAME = "fishing-solunar-shell-v52";
+const CACHE_NAME = "fishing-solunar-shell-v63";
 const PRECACHE_URLS = [
   "./",
   "index.html",
@@ -17,6 +17,7 @@ const PRECACHE_URLS = [
   "js/solunar.js",
   "js/tides.js",
   "js/radar-sites.js",
+  "js/cloudfield.js",
   "js/radar.js",
   "js/app.js",
   "data/tides/waddy-point-kgari-2026.csv",

@@ -4870,6 +4870,18 @@ function init() {
       RadarBackground.setProduct($("radarProductSelect").value);
       syncRadarRange();
     });
+    $("radarFrontChk").checked = RadarBackground.getFront();
+    $("radarFrontChk").addEventListener("change", () => {
+      const on = $("radarFrontChk").checked;
+      RadarBackground.setFront(on);
+      // Foreground clouds only exist in smooth mode, so switch to it.
+      if (on && RadarBackground.getMode() !== "smooth") {
+        RadarBackground.setMode("smooth");
+        $("radarModeSelect").value = "smooth";
+      }
+    });
+    $("radarSpanSelect").value = String(RadarBackground.getSpan());
+    $("radarSpanSelect").addEventListener("change", () => RadarBackground.setSpan($("radarSpanSelect").value));
     $("radarRangeSelect").addEventListener("change", () => RadarBackground.setRange($("radarRangeSelect").value));
     $("radarOpacity").addEventListener("input", () => RadarBackground.setOpacity($("radarOpacity").value));
   }

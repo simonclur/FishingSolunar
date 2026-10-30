@@ -1308,6 +1308,63 @@ observer (basemap re-tint). Mode/strength persist in `localStorage`
 (`fishingSolunar.radarMode` / `fishingSolunar.radarOpacity`). Failures
 degrade silently (no overlay) and never affect the planner.
 
+Zoom: `state.span` (0 = auto, or 750/1500/3000/6000 km; `fishingSolunar.viewSpan`,
+"Zoom" in Settings) is the view width passed to `layoutFor()` in every mode
+(satellite/smooth, BOM radar, RainViewer), always centred on the current
+location. Auto keeps each source's own default (satellite 1500 km, BOM 1.5 x
+radar range, RainViewer 350 km). GIBS Himawari tiles exist at z3-z6 (z6 ~2
+km/px, the native limit), so wider spans use lower-zoom tiles; the "close"
+span upscales z6. Himawari covers the full disk, so very wide views near its
+edge are blank. A BOM radar image only covers 2 x its range, so in radar
+mode an explicit zoom wider than 1.5 x the radar range uses RainViewer
+(`bomFitsSpan()`); the rainfall-total products stay on BOM.
+
+**Foreground clouds.** Settings > "Smooth clouds drift in front of the planner"
+(`RadarBackground.setFront`, key `fishingSolunar.cloudFront`) adds the
+`radar-front` class in smooth mode: the basemap/coastline layers are hidden and
+the transparent cloud layer is raised above the planner (below the header,
+`pointer-events: none`). The Opacity slider sets how heavy the clouds look.
+
+### Smooth cloud + rain mode (`js/cloudfield.js`)
+
+Mode `smooth` reads the Himawari (GIBS) tiles into numeric density grids
+(CORS is enabled; BOM images are not readable). Both channels come from the
+same pixels so they match the plain satellite view: gray IR brightness ->
+cloud density (`cloudFromIR`, colder = denser); GIBS paints the coldest tops
+cyan -> navy, which is read as heavy convective cloud / "rain" (`rainFromIR`).
+`rainFromRGBA` (RainViewer palette) remains in Core for a real radar channel. Each cell is
+`CF_DS` (4) world px. `CloudField.Core.blockFlow()` estimates motion between
+consecutive frames (8-cell block matching, sub-cell refinement, confidence-
+weighted smoothing); `interpolate()` advects both neighbouring frames to the
+in-between time and blends, so density drifts instead of cross-fading. After
+the newest frame the field is extrapolated along the last flow for ~30 min
+(fading, shown as "nowcast"). Rendering is one canvas (white cloud, cyan->
+navy rain matching the GIBS IR palette) with a light CSS blur, plus a second canvas for lightning.
+Falls back to the plain satellite frames if anything fails.
+
+Missing GIBS tiles: GIBS publishes each frame tile-by-tile, so the newest
+frame (and occasionally one tile of an older frame) returns 404 for several
+minutes. The plain satellite view falls back per tile to the same tile from
+the previous 1-2 frames (`gibsTileUrls()`). Smooth mode does better:
+the GIBS layer is a pyramid (z3 widest ... z6 finest) and `pyramidTile()`
+rebuilds a missing tile from the *same instant* at other levels, per
+quadrant: finer tiles (z+1) averaged down, else coarser ancestors (up to 3
+levels) cropped and upscaled. Only if that fails does it use the same tile
+from the previous 1-2 frames, and a frame that still can't be completed is
+dropped (absent tiles would read as clear sky and fade the density). A tile
+missing from *every* frame lies outside the Himawari footprint (common in wide
+views) and is simply left clear rather than counted as a hole; a frame with no
+tile at all is treated as not yet published. Loading is two-phase: all frames'
+tiles at the view's zoom first, then gap filling only for tiles known to exist
+in some frame. Fetches are memoised per build.
+
+Extension points: `RadarBackground.getCloudLayer()` returns the layer
+(`setChannel(name, times, grids)`, `fieldsAt(t)`, `sample(name,x,y,t)`).
+Optional channels `cloudTop` (shades cloud) and `waterDensity` (modulates
+opacity) are honoured; any other channel is interpolated and available for a
+future WebGL/3D volume. `RadarBackground.setLightning([{t, lat, lon,
+energy}])` draws strike flashes in sync with the animation clock.
+
 Default mode is `satellite` (`DEFAULT_MODE` in `js/radar.js`; cloud imagery
 from NASA GIBS Himawari) rather than the BOM/RainViewer rain radar. Users who
 already saved a mode keep it; rain radar and "Off" remain selectable in

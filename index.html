@@ -96,8 +96,18 @@
       <label for="radarModeSelect">Weather background</label>
       <select id="radarModeSelect">
         <option value="radar">Rain radar (animated)</option>
+        <option value="smooth">Smooth cloud + rain (satellite-based)</option>
         <option value="satellite">Cloud satellite (animated)</option>
         <option value="off">Off</option>
+      </select>
+      <label class="radar-opacity-label"><input type="checkbox" id="radarFrontChk"> Smooth clouds drift in front of the planner</label>
+      <label for="radarSpanSelect" class="radar-opacity-label">Zoom (all cloud and rain views)</label>
+      <select id="radarSpanSelect">
+        <option value="0">Auto (default for each view)</option>
+        <option value="750">Close (~750 km wide)</option>
+        <option value="1500">Regional (~1500 km)</option>
+        <option value="3000">Wide (~3000 km)</option>
+        <option value="6000">Very wide (~6000 km)</option>
       </select>
       <label for="radarProductSelect" class="radar-opacity-label">Radar view</label>
       <select id="radarProductSelect">
@@ -246,6 +256,7 @@
 <script src="js/solunar.js"></script>
 <script src="js/tides.js"></script>
 <script src="js/radar-sites.js"></script>
+<script src="js/cloudfield.js"></script>
 <script src="js/radar.js"></script>
 <script src="js/app.js"></script>
 </body>
