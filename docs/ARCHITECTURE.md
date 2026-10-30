@@ -1319,6 +1319,25 @@ edge are blank. A BOM radar image only covers 2 x its range, so in radar
 mode an explicit zoom wider than 1.5 x the radar range uses RainViewer
 (`bomFitsSpan()`); the rainfall-total products stay on BOM.
 
+**Lightning (`js/lightning.js`).** Settings > "Lightning flashes" picks a
+source; each adapter normalises strikes to `{t, lat, lon, energy}` (buffered 3 h,
+max 4000) and calls `RadarBackground.setLightning()`, so flashes play on the
+cloud layer's time axis. Sources: `xweather` (Vaisala GLD360; polls every 60 s,
+free tier = last 5 min within 100 km, so the buffer builds while the app is
+open; client id/secret are stored in localStorage and sent from the browser, so
+use a restricted/free key), `blitzortung` (live websocket to
+`wss://ws1|ws8|ws7.blitzortung.org`, LZW-compressed JSON, sends `{"a":111}`;
+**personal / non-commercial use only**, no history, closed while the tab is
+hidden) and `demo` (simulated storm). Choosing a source switches to smooth mode.
+Flash timing is in data time (loop = ~6 min/s): 0-2 min a white/blue/purple
+bolt, 2-6 min fade to yellow, then a fading yellow trail up to 45 min
+(`drawLightning` in `js/cloudfield.js`).
+
+**Preview defaults.** Defaults are smooth mode, foreground clouds and live Blitzortung
+lightning at the 6000 km zoom; a one-time migration (`fishingSolunar.previewDefaults3`, top of
+`js/lightning.js`) overwrites older saved choices so the features show without
+setup. Remove it once the defaults are no longer a preview.
+
 **Foreground clouds.** Settings > "Smooth clouds drift in front of the planner"
 (`RadarBackground.setFront`, key `fishingSolunar.cloudFront`) adds the
 `radar-front` class in smooth mode: the basemap/coastline layers are hidden and
@@ -1333,7 +1352,7 @@ same pixels so they match the plain satellite view: gray IR brightness ->
 cloud density (`cloudFromIR`, colder = denser); GIBS paints the coldest tops
 cyan -> navy, which is read as heavy convective cloud / "rain" (`rainFromIR`).
 `rainFromRGBA` (RainViewer palette) remains in Core for a real radar channel. Each cell is
-`CF_DS` (4) world px. `CloudField.Core.blockFlow()` estimates motion between
+`CF_DS` (2) world px. `CloudField.Core.blockFlow()` estimates motion between
 consecutive frames (8-cell block matching, sub-cell refinement, confidence-
 weighted smoothing); `interpolate()` advects both neighbouring frames to the
 in-between time and blends, so density drifts instead of cross-fading. After

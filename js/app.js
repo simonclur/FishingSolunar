@@ -4882,6 +4882,27 @@ function init() {
     });
     $("radarSpanSelect").value = String(RadarBackground.getSpan());
     $("radarSpanSelect").addEventListener("change", () => RadarBackground.setSpan($("radarSpanSelect").value));
+    Lightning.init();
+    const lcfg = Lightning.getConfig();
+    const syncLightning = () => { $("lightningXweatherFields").hidden = $("lightningSourceSelect").value !== "xweather"; };
+    $("lightningSourceSelect").value = lcfg.source;
+    $("lightningXid").value = lcfg.xid;
+    $("lightningXsecret").value = lcfg.xsecret;
+    syncLightning();
+    Lightning.onStatus((t) => { $("lightningStatus").textContent = t; });
+    const applyLightning = () => {
+      syncLightning();
+      Lightning.setConfig({ source: $("lightningSourceSelect").value, xid: $("lightningXid").value, xsecret: $("lightningXsecret").value });
+      // Flashes only show on the smooth cloud layer.
+      if ($("lightningSourceSelect").value !== "off" && RadarBackground.getMode() !== "smooth") {
+        RadarBackground.setMode("smooth");
+        $("radarModeSelect").value = "smooth";
+      }
+    };
+    $("lightningSourceSelect").addEventListener("change", applyLightning);
+    $("lightningXid").addEventListener("change", applyLightning);
+    $("lightningXsecret").addEventListener("change", applyLightning);
+    $("lightningStatus").textContent = Lightning.getStatus();
     $("radarRangeSelect").addEventListener("change", () => RadarBackground.setRange($("radarRangeSelect").value));
     $("radarOpacity").addEventListener("input", () => RadarBackground.setOpacity($("radarOpacity").value));
   }

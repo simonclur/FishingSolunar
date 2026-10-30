@@ -308,6 +308,26 @@ the service worker.
 - **Cloud satellite**: NASA GIBS Himawari AHI Band 13 clean infrared tiles
   (`gibs.earthdata.nasa.gov/wmts/epsg3857/best`, Web-Mercator, 10-minute
   frames, ~30-40 minute latency; latest time from the layer's Domains XML).
+- **Smooth cloud + rain** (default): the same GIBS Himawari tiles, read as
+  pixel data (CORS-enabled) and turned into cloud and rain density grids that
+  are interpolated between frames (`js/cloudfield.js`). Zoom levels z3-z6 are
+  combined to fill missing tiles; the newest frames are published tile by tile
+  (404 until complete) and tiles outside the Himawari disc 404 for every frame.
+  The rain channel is a proxy (the coldest cloud tops that GIBS paints
+  cyan-navy), not measured rainfall. Default view width is 6000 km.
+- **Lightning flashes** (`js/lightning.js`, shown on the smooth layer):
+  - *Blitzortung* (default): community network, live websocket
+    `wss://ws1|ws8|ws7.blitzortung.org` (LZW-compressed JSON `{time ns, lat,
+    lon}` after sending `{"a":111}`). Personal / non-commercial use only; the
+    feed is intended for network contributors, so check their terms before
+    wider distribution. No history: the buffer starts when the app opens.
+  - *Xweather* (Vaisala GLD360): `https://data.api.xweather.com/lightning/`,
+    needs a client ID/secret (entered in Settings, stored in localStorage). The
+    standard tier returns only the last 5 minutes within 100 km (max 1000
+    strikes per query); polled every 60 s and buffered. Larger areas, history
+    and bounding boxes need the Enterprise add-on.
+  - *Demo*: simulated storm for testing.
+  - BOM, Himawari and GOES GLM have no usable public strike feed for Australia.
 - **Basemap**: Esri "World Light/Dark Gray" canvas base + reference (labels)
   tiles, matched to the app theme. (CARTO basemap tiles were tried first but
   now return an "API key required" watermark.)
@@ -322,6 +342,9 @@ the service worker.
 - Radar background: BOM radar only covers Australia; outside it (or if BOM
   frames can't be loaded) RainViewer is used. Satellite imagery lags by
   ~30-40 minutes.
+- Lightning: no free, officially supported strike feed covers Australia.
+  Blitzortung is personal-use only and may change or block access; Xweather's
+  free tier is limited to 100 km / 5 minutes.
 
 - Tide data: local files only exist for stations bundled in `data/tides/`
   (currently Waddy Point 2026). Other locations, or years beyond what's

@@ -332,7 +332,7 @@
       c.className = "cloudfield-canvas";
       c.style.cssText = `position:absolute;left:${opts.x || 0}px;top:${opts.y || 0}px;width:${W * cellPx}px;height:${H * cellPx}px;max-width:none;pointer-events:none;`;
     }
-    cloudCanvas.style.filter = `blur(${opts.blur != null ? opts.blur : cellPx * 0.7}px)`;
+    cloudCanvas.style.filter = `blur(${opts.blur != null ? opts.blur : cellPx * 0.4}px)`;
     container.append(cloudCanvas, lightCanvas);
     const ctx = cloudCanvas.getContext("2d");
     const lctx = lightCanvas.getContext("2d");
@@ -404,25 +404,71 @@
       if (opts.onTime) opts.onTime(tMs, tMs > tMax);
     }
 
+    // Deterministic jagged bolt (canvas px) so a strike looks the same each frame.
+    function bolt(px, py, seed, len) {
+      const pts = [[px, py - len]];
+      let x = px;
+      let sd = seed;
+      const rnd = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
+      const n = 6;
+      for (let i = 1; i < n; i++) {
+        x += (rnd() - 0.5) * len * 0.5;
+        pts.push([x, py - len + (len * i) / n]);
+      }
+      pts.push([px, py]);
+      return pts;
+    }
+
+    // The loop plays ~6 min of data per second, so timings are in data time:
+    // 0-2 min  white/blue/purple bolt + flash
+    // 2-6 min  fade to yellow
+    // 6-45 min fading yellow trail marking where the strike was
     function drawLightning(tMs) {
       lctx.clearRect(0, 0, lightCanvas.width, lightCanvas.height);
       if (!strikes.length) return;
-      lctx.globalCompositeOperation = "lighter";
+      const MIN = 60 * 1000;
+      const TRAIL = 45 * MIN;
+      lctx.lineJoin = "round";
+      lctx.lineCap = "round";
       for (const s of strikes) {
         const age = tMs - s.t;
-        if (age < 0 || age > 4 * 60 * 1000) continue;
-        const a = Math.max(0, 1 - age / (4 * 60 * 1000));
-        const flash = age < 2500 ? 1 : 0; // bright core for a moment
+        if (age < 0 || age > TRAIL) continue;
         const px = s.x * 2;
         const py = s.y * 2;
-        const r = (2 + 3 * (s.energy || 0.5)) * (1 + flash);
-        const g = lctx.createRadialGradient(px, py, 0, px, py, r * 2);
-        g.addColorStop(0, `rgba(255,250,200,${0.25 + 0.6 * a * (flash ? 1 : 0.5)})`);
-        g.addColorStop(1, "rgba(255,230,120,0)");
-        lctx.fillStyle = g;
-        lctx.fillRect(px - r * 2, py - r * 2, r * 4, r * 4);
+        const e = s.energy || 0.5;
+        const size = 0.6 + 0.7 * e;
+        const tail = Math.max(0, 1 - Math.max(0, age - 2 * MIN) / (TRAIL - 2 * MIN));
+
+        // Yellow trail: warm halo that fades slowly.
+        const warm = age < 6 * MIN ? 1 : 0.45 * tail * tail + 0.05;
+        const rg = lctx.createRadialGradient(px, py, 0, px, py, size * 4);
+        rg.addColorStop(0, `rgba(255,225,70,${0.85 * warm})`);
+        rg.addColorStop(1, "rgba(255,170,0,0)");
+        lctx.fillStyle = rg;
+        lctx.fillRect(px - size * 4, py - size * 4, size * 8, size * 8);
+
+        if (age < 2 * MIN) {
+          const f = 1 - age / (2 * MIN);
+          const pts = bolt(px, py, (s.t | 0) ^ ((s.x * 977) | 0), 7 + 8 * e);
+          lctx.beginPath();
+          pts.forEach((q, i) => (i ? lctx.lineTo(q[0], q[1]) : lctx.moveTo(q[0], q[1])));
+          lctx.strokeStyle = `rgba(150,60,255,${0.55 * f})`; // purple glow
+          lctx.lineWidth = 3 * size;
+          lctx.stroke();
+          lctx.strokeStyle = `rgba(80,150,255,${0.8 * f})`; // blue
+          lctx.lineWidth = 1.6 * size;
+          lctx.stroke();
+          lctx.strokeStyle = `rgba(255,255,255,${f})`; // white-hot core
+          lctx.lineWidth = 0.8;
+          lctx.stroke();
+          const fg = lctx.createRadialGradient(px, py, 0, px, py, size * 5);
+          fg.addColorStop(0, `rgba(255,255,255,${0.9 * f})`);
+          fg.addColorStop(0.4, `rgba(140,150,255,${0.5 * f})`);
+          fg.addColorStop(1, "rgba(110,60,255,0)");
+          lctx.fillStyle = fg;
+          lctx.fillRect(px - size * 5, py - size * 5, size * 10, size * 10);
+        }
       }
-      lctx.globalCompositeOperation = "source-over";
     }
 
     function loopTime(now) {

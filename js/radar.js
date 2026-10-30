@@ -30,7 +30,7 @@
   const LS_RANGE = "fishingSolunar.radarRange"; // 64 | 128 | 256 | 512 (km)
   const LS_PRODUCT = "fishingSolunar.radarProduct"; // "now" | "since9am" | "24h"
   const MODES = ["off", "radar", "satellite", "smooth"];
-  const CF_DS = 4; // world px per density-grid cell (smooth mode)
+  const CF_DS = 2; // world px per density-grid cell (smooth mode)
   const RANGES = [64, 128, 256, 512];
   const LS_FRONT = "fishingSolunar.cloudFront"; // smooth clouds drift in front of the planner
   const LS_SPAN = "fishingSolunar.viewSpan"; // view width in km; 0 = auto (per source)
@@ -43,7 +43,7 @@
     since9am: { suffix: "C", label: "rainfall since 9am", stepMs: 60 * MIN, minute: 15, keepMs: 12 * 60 * MIN, count: 8 },
     "24h": { suffix: "D", label: "24-hour rainfall", stepMs: 24 * 60 * MIN, minute: 0, hourUtc: 23, keepMs: 9 * 24 * 60 * MIN, count: 7 },
   };
-  const DEFAULT_MODE = "satellite";
+  const DEFAULT_MODE = "smooth";
   const DEFAULT_OPACITY = 0.95;
   // BOM radar frames have a copyright banner (top) and a timestamp/legend
   // strip (bottom) baked in; crop them out of the full-screen view (the
@@ -54,7 +54,7 @@
     mode: DEFAULT_MODE,
     opacity: DEFAULT_OPACITY,
     range: 128,
-    span: 0,
+    span: 6000,
     product: "now",
     lat: NaN,
     lon: NaN,
@@ -92,7 +92,7 @@
       if (RANGES.includes(r)) state.range = r;
       const sp = parseInt(localStorage.getItem(LS_SPAN), 10);
       if (SPANS.includes(sp)) state.span = sp;
-      state.front = localStorage.getItem(LS_FRONT) === "1";
+      state.front = localStorage.getItem(LS_FRONT) !== "0";
       const p = localStorage.getItem(LS_PRODUCT);
       if (PRODUCTS[p]) state.product = p;
     } catch (e) { /* localStorage unavailable - keep defaults */ }
@@ -707,10 +707,12 @@
         moved = !isFinite(state.lat) || Math.abs(lat - state.lat) > 0.01 || Math.abs(lon - state.lon) > 0.01;
         state.lat = lat;
         state.lon = lon;
+        if (moved && window.Lightning) window.Lightning.setCentre(lat, lon);
       }
       if (moved || !state.lastBuild || Date.now() - state.lastBuild >= REFRESH_MS - 30 * 1000) build();
     },
     getMode() { return state.mode; },
+    getLocation() { return { lat: state.lat, lon: state.lon }; },
     // Lightning telemetry hook: [{ t: ms, lat, lon, energy: 0..1 }]. Drawn as
     // decaying flashes in smooth mode, in sync with the animation clock.
     setLightning(list) {

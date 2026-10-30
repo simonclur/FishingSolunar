@@ -19,6 +19,12 @@ See [docs/](docs/) for full documentation:
 - [docs/SETUP.md](docs/SETUP.md) — running it locally, configuring a location
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — file layout, rendering pipeline, print/mobile CSS strategy
 
+The background can show an animated, smoothly interpolated cloud and rain
+layer built from Himawari satellite tiles (optionally drifting in front of the
+planner), with live lightning flashes — see the radar / lightning sections in
+[docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Quick start
 
 Open `index.html` directly in a browser (double-click, or serve it with
